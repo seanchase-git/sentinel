@@ -1,0 +1,39 @@
+id: cwe-601-open-redirect-javascript
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-601
+title: Open Redirect via Unvalidated Redirect Target
+severity: medium
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - express
+description: |
+  Redirecting to a URL taken from user input lets an attacker craft links on
+  the trusted domain that bounce victims to an attacker-controlled site —
+  aiding phishing and OAuth token theft. The trust comes from the legitimate
+  domain in the link, not the destination.
+detection_criteria: |
+  Flag redirects to a user-controlled destination:
+  - res.redirect(req.query.next) or res.redirect(req.query.url)
+  - window.location = params.get('redirect') (client-side)
+  - a "returnTo"/"next"/"continue" parameter used without validation
+  Safe: allow only relative paths, or check the target against an allowlist of
+  hosts before redirecting.
+example_vulnerable: |
+  app.get('/login', (req, res) => {
+    // ... authenticate ...
+    res.redirect(req.query.next);
+  });
+example_secure: |
+  app.get('/login', (req, res) => {
+    // ... authenticate ...
+    const next = req.query.next || '/';
+    res.redirect(next.startsWith('/') && !next.startsWith('//') ? next : '/');
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/601.html
+    title: CWE-601 Open Redirect
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

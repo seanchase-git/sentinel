@@ -1,0 +1,34 @@
+id: cwe-78-subprocess-shell-concat-python
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-78
+title: Command Injection via subprocess with shell=True and User Input
+severity: critical
+languages:
+  - python
+frameworks: []
+description: |
+  subprocess.run/Popen/call/check_output with shell=True passes the command
+  string to /bin/sh, so any user input interpolated into it can inject shell
+  metacharacters and run arbitrary commands. This is distinct from a fixed
+  os.system: it commonly appears where a developer thought subprocess was
+  inherently safe.
+detection_criteria: |
+  Flag subprocess calls that combine shell=True with user-influenced strings:
+  - subprocess.run(f"convert {infile} {outfile}", shell=True) with user paths
+  - subprocess.Popen("cmd " + user_arg, shell=True)
+  - check_output(user_command, shell=True)
+  Safe: pass an argument list with shell=False (the default) —
+  subprocess.run(["convert", infile, outfile]) — so user values are argv
+  elements, not shell syntax.
+example_vulnerable: |
+  def resize(path):
+      subprocess.run(f"convert {path} -resize 50% out.png", shell=True)
+example_secure: |
+  def resize(path):
+      subprocess.run(["convert", path, "-resize", "50%", "out.png"])
+references:
+  - url: https://cwe.mitre.org/data/definitions/78.html
+    title: CWE-78 OS Command Injection
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

@@ -1,0 +1,33 @@
+id: cwe-208-timing-unsafe-compare-python
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-208
+title: Timing-Unsafe Comparison of Secrets
+severity: medium
+languages:
+  - python
+frameworks: []
+description: |
+  Comparing secrets — API keys, tokens, HMAC signatures, password hashes —
+  with == returns as soon as it hits a differing byte, so the time taken
+  leaks how many leading bytes matched. Over many requests an attacker can
+  recover the secret byte by byte.
+detection_criteria: |
+  Flag == / != comparisons on security-sensitive values:
+  - if request.headers["X-API-Key"] == API_KEY
+  - if hmac_digest == expected_signature
+  - token/secret/signature equality checks in an auth path
+  Safe: hmac.compare_digest(a, b) (or secrets.compare_digest), which runs in
+  constant time.
+example_vulnerable: |
+  def check(sig, expected):
+      return sig == expected
+example_secure: |
+  import hmac
+  def check(sig, expected):
+      return hmac.compare_digest(sig, expected)
+references:
+  - url: https://cwe.mitre.org/data/definitions/208.html
+    title: CWE-208 Observable Timing Discrepancy
+  - url: https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
+    title: OWASP Top 10 A02 Cryptographic Failures

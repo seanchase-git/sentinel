@@ -1,0 +1,54 @@
+id: cwe-306-missing-authentication-fastify
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-306
+title: Missing Authentication on Sensitive Fastify Route
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - fastify
+description: |
+  Fastify routes that read, modify, or delete data, or expose admin and
+  internal functionality, must require authentication. Fastify's hooks run
+  per-encapsulation-context, so a preHandler or onRequest hook registered in
+  one plugin does not protect routes registered in another. A handler with no
+  hook covering it and no inline identity check is reachable by any anonymous
+  caller.
+detection_criteria: |
+  Flag sensitive handlers with no enforced authentication:
+  - fastify.post/put/delete/patch on data-modifying or admin routes with no
+    { preHandler } / { onRequest } option and no auth call in the body
+  - a route whose auth call result is discarded, so a failure does not stop
+    the handler. An awaited call that throws on failure IS enforcement; a call
+    whose return value is ignored and which returns null on failure is not
+  - routes registered inside a plugin that the auth hook does not cover, or
+    skipped by a path test inside the hook. A hook that returns early for a
+    whole path prefix leaves every route under that prefix anonymous, however
+    sensitive the handler is
+  - a handler that trusts an id from req.body or req.params as the actor
+    identity instead of the authenticated user
+  Distinguish intentionally public routes: health checks, login and register,
+  auth callbacks, and content the application documents as anonymous. A route
+  the surrounding code marks public is not a finding. The risk is a
+  state-changing or data-exposing action reachable without authentication.
+example_vulnerable: |
+  fastify.delete('/documents/:id', async (req, reply) => {
+    await db.documents.delete(req.params.id);
+    return reply.code(204).send();
+  });
+example_secure: |
+  fastify.delete(
+    '/documents/:id',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      await db.documents.delete(req.params.id, { ownerId: req.user.id });
+      return reply.code(204).send();
+    },
+  );
+references:
+  - url: https://cwe.mitre.org/data/definitions/306.html
+    title: CWE-306 Missing Authentication for Critical Function
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

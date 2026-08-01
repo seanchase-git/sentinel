@@ -1,0 +1,33 @@
+id: owasp-a03-sql-injection-python-string-format
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-89
+title: SQL Injection via Python String Formatting
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Constructing SQL queries with string formatting (%, .format(), or f-strings)
+  and user input allows an attacker to inject arbitrary SQL. Even if the
+  query appears to use a database library, the vulnerability exists at the
+  point of string construction, before the driver sees it.
+detection_criteria: |
+  Look for SQL query strings constructed with %, .format(), or f-string
+  interpolation where any interpolated value could be user-controlled.
+  Specifically flag:
+  - cursor.execute(f"SELECT ... {var}")
+  - cursor.execute("SELECT ... %s" % var)
+  - cursor.execute("SELECT ... {}".format(var))
+  - query strings built by + concatenation with request parameters
+example_vulnerable: |
+  def get_user(user_id):
+      cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
+example_secure: |
+  def get_user(user_id):
+      cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+references:
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection
+  - url: https://cwe.mitre.org/data/definitions/89.html
+    title: CWE-89 SQL Injection

@@ -1,0 +1,39 @@
+id: cwe-1333-redos-javascript
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-1333
+title: Regular Expression Denial of Service (ReDoS)
+severity: medium
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  A regular expression with catastrophic backtracking — nested or adjacent
+  quantifiers over overlapping character classes — can take exponential time
+  on a crafted input. Running such a regex against user-controlled strings on
+  a single-threaded Node event loop lets one request stall the whole server.
+detection_criteria: |
+  Flag risky patterns applied to user input:
+  - regexes with nested quantifiers like (a+)+, (.*)*, (\d+)*$ or overlapping
+    alternations tested against req.body/req.query/req.params
+  - user-supplied strings used to build a RegExp then matched against large
+    input
+  Safe: use linear-time patterns (anchored, possessive/atomic where
+  available), bound input length, or a non-backtracking engine (RE2).
+example_vulnerable: |
+  app.post('/validate', (req, res) => {
+    const ok = /^(a+)+$/.test(req.body.value);
+    res.json({ ok });
+  });
+example_secure: |
+  app.post('/validate', (req, res) => {
+    const v = String(req.body.value).slice(0, 256);
+    const ok = /^a+$/.test(v);
+    res.json({ ok });
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/1333.html
+    title: CWE-1333 Inefficient Regular Expression Complexity
+  - url: https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+    title: OWASP Top 10 A05 Security Misconfiguration

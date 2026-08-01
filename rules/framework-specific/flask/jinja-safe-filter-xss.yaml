@@ -1,0 +1,40 @@
+id: xss-flask-jinja-safe-filter
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: XSS via Jinja |safe Filter or Markup on User Data
+severity: high
+languages:
+  - python
+frameworks:
+  - flask
+  - django
+description: |
+  Jinja2 autoescapes template variables, but the |safe filter, the
+  markupsafe.Markup() wrapper, and disabling autoescape mark a value as
+  trusted HTML. Applying them to user-controlled data renders attacker
+  markup and enables stored or reflected XSS.
+detection_criteria: |
+  Flag user data marked safe for HTML rendering:
+  - {{ user_input | safe }} in a template
+  - Markup(user_value) or flask.Markup(user_value) in view code
+  - render_template_string(f"...{user_input}...") — user data compiled as a
+    template (also SSTI)
+  - autoescape false blocks wrapping user data
+  Safe: let autoescape render user values as text; only mark constant,
+  developer-authored HTML as safe.
+example_vulnerable: |
+  # template: <h1>Hello {{ name | safe }}</h1>
+  @app.route("/greet")
+  def greet():
+      return render_template("greeting.html", name=request.args["name"])
+example_secure: |
+  # template: <h1>Hello {{ name }}</h1>  (autoescaped)
+  @app.route("/greet")
+  def greet():
+      return render_template("greeting.html", name=request.args["name"])
+references:
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-site Scripting
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

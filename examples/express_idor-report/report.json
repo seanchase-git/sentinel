@@ -1,0 +1,248 @@
+{
+  "run": {
+    "target": "tests/fixtures/vulnerable_apps/express_idor",
+    "timestamp": "2026-07-31T14:48:13-0700",
+    "sentinel_version": "0.1.0",
+    "wall_seconds": 465.84,
+    "models": {
+      "deep-review": {
+        "role": "Deep security review (workhorse)",
+        "developer": "NVIDIA",
+        "origin": "USA",
+        "hf_repo": "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5",
+        "gguf": "nvidia_Llama-3_3-Nemotron-Super-49B-v1_5-Q8_0-00001-of-00002.gguf"
+      },
+      "input-guard": {
+        "role": "Input guardrail classifier",
+        "developer": "Meta",
+        "origin": "USA",
+        "hf_repo": "meta-llama/Llama-Guard-3-8B",
+        "gguf": "Llama-Guard-3-8B.Q8_0.gguf"
+      },
+      "triage": {
+        "role": "Cheap triage",
+        "developer": "IBM",
+        "origin": "USA",
+        "hf_repo": "ibm-granite/granite-3.3-2b-instruct",
+        "gguf": "granite-3.3-2b-instruct-Q8_0.gguf"
+      },
+      "judge": {
+        "role": "Groundedness judge",
+        "developer": "IBM",
+        "origin": "USA",
+        "hf_repo": "ibm-granite/granite-guardian-3.3-8b",
+        "gguf": "granite-guardian-3.3-8b-Q8_0.gguf"
+      },
+      "classify": {
+        "role": "Language/framework/risk classifier",
+        "developer": "Meta",
+        "origin": "USA",
+        "hf_repo": "meta-llama/Llama-3.2-1B-Instruct",
+        "gguf": "Llama-3.2-1B-Instruct-Q8_0.gguf"
+      },
+      "nomic-embed": {
+        "role": "Rule/code embedder",
+        "developer": "Nomic AI",
+        "origin": "USA",
+        "hf_repo": "nomic-ai/nomic-embed-text-v1.5",
+        "gguf": "nomic-embed-text-v1.5.f16.gguf"
+      }
+    },
+    "thresholds": {
+      "judge_groundedness": 0.7,
+      "retrieval_top_k": 20
+    },
+    "severity_filter": null
+  },
+  "summary": {
+    "files_reviewed": 2,
+    "file_status_counts": {
+      "completed": 2
+    },
+    "findings": 2,
+    "findings_by_severity": {
+      "critical": 2
+    },
+    "suppressed_candidates": 1,
+    "judge_unavailable": 0,
+    "rejected_inputs": 0,
+    "complete": true
+  },
+  "findings": [
+    {
+      "finding_id": "5cdcb7a0-f5aa-4944-8d98-44fb9e7e51ba",
+      "rule_id": "owasp-a03-eval-user-input-javascript",
+      "file_path": "server.js",
+      "line_start": 18,
+      "line_end": 20,
+      "code_snippet": "app.get('/calc', (req, res) => {\n  const result = eval(req.query.expr);\n  res.send(String(result));",
+      "severity": "critical",
+      "claimed_severity": "critical",
+      "explanation": "The '/calc' route evaluates user input directly using 'eval()', which can execute arbitrary code.",
+      "grounded_in_rule_chunk": "id: owasp-a03-eval-user-input-javascript\ntaxonomy:\n  - owasp: A03:2021\n  - cwe: CWE-95\ntitle: Code Injection via eval() on User Input\nseverity: critical\nlanguages:\n  - javascript\n  - typescript\nframeworks: []\ndescription: |\n  Passing user-controlled data to eval(), new Function(), setTimeout/setInterval\n  with string arguments, or vm.runInContext executes attacker-supplied code with\n  the full privileges of the application process. In a Node.js server this is\n  remote code execution; in the browser it enables DOM-based attacks and data\n  exfiltration.\ndetection_criteria: |\n  Flag any call where user-influenced data reaches a dynamic code sink:\n  - eval(req.query.x), eval(userInput), eval(`...${input}...`)\n  - new Function(body) where body derives from request data\n  - setTimeout(string, ...) or setInterval(string, ...) with non-literal strings\n  - vm.runInNewContext / vm.runInThisContext with request-derived source\nexample_vulnerable: |\n  app.get('/calc', (req, res) => {\n    res.send(String(eval(req.query.expr)));\n  });\nexample_secure: |\n  app.get('/calc', (req, res) => {\n    const value = Number.parseFloat(req.query.expr);\n    if (Number.isNaN(value)) return res.status(400).send('invalid');\n    res.send(String(value));\n  });\nreferences:\n  - url: https://owasp.org/Top10/A03_2021-Injection/\n    title: OWASP Top 10 A03 Injection\n  - url: https://cwe.mitre.org/data/definitions/95.html\n    title: CWE-95 Eval Injection\n",
+      "judge": {
+        "grounded": true,
+        "groundedness_score": 1.0,
+        "reasoning": "The code directly passes user-controlled input (req.query.expr) to eval() without any sanitization, validation, or parameterization. This matches the rule's detection criteria for code injection via eval(), making the candidate explanation accurate and the finding valid.",
+        "refutation": {
+          "refuted": false,
+          "confidence": 0.0,
+          "reasoning": "The code directly passes user-controlled input (req.query.expr) to eval() without any sanitization, validation, or parameterization. This matches the rule's detection criteria for code injection via eval(), making the candidate explanation accurate and the finding valid."
+        },
+        "guardian_secondary": {
+          "grounded": true,
+          "groundedness_score": 0.9999848140265843,
+          "reasoning": "Okay I need to check if the assistant response is logically supported by the document(s) or not. \nRelevant_sentences: Passing user-controlled data to eval(), new Function(), setTimeout/setInterval with string arguments, or vm.runInContext executes attacker-supplied code with the full privileges of the application process. Verified code snippet from server.js (lines 18-20): app.get('/calc', (req, res) => { const result = eval(req.query.expr); res.send(String(result)); });\nRationale: The claim states that the code snippet in server.js (lines 18-20) is vulnerable to 'owasp-a03-eval-user-input-javascript' because it evaluates user input using 'eval()'. The document explicitly mentions that passing user-controlled data to 'eval()' executes attacker-supplied code. The code snippet in server.js indeed uses 'eval()' to evaluate user input, which aligns with the description of the vulnerability. The document also provides a secure example, which contrasts with the vulnerable example in the claim, reinforcing the vulnerability of the provided code snippet. \nClaim_error_span: [None] Since there is no risk associated, the score is no."
+        }
+      }
+    },
+    {
+      "finding_id": "25964df7-e89d-4b30-952d-44fba2540fc7",
+      "rule_id": "owasp-a03-command-injection-javascript-exec",
+      "file_path": "server.js",
+      "line_start": 23,
+      "line_end": 28,
+      "code_snippet": "app.get('/ping', (req, res) => {\n  const host = req.query.host;\n  exec('ping -c 1 ' + host, (err, stdout) => {\n    if (err) return res.status(500).send('failed');\n    res.type('text/plain').send(stdout);\n  });",
+      "severity": "critical",
+      "claimed_severity": "critical",
+      "explanation": "The '/ping' route constructs a shell command by concatenating user input ('host') directly into the command string passed to 'exec()'.",
+      "grounded_in_rule_chunk": "id: owasp-a03-command-injection-javascript-exec\ntaxonomy:\n  - owasp: A03:2021\n  - cwe: CWE-78\ntitle: OS Command Injection via child_process.exec\nseverity: critical\nlanguages:\n  - javascript\n  - typescript\nframeworks: []\ndescription: |\n  child_process.exec and execSync run their argument through a shell, so\n  concatenating or interpolating user input into the command lets an attacker\n  append shell metacharacters (;, |, &&, $()) and run arbitrary commands as\n  the Node process user. The vulnerability is the shell parsing the combined\n  string, before any program runs.\ndetection_criteria: |\n  Flag shell execution where user input can reach the command string:\n  - exec('cmd ' + userInput, ...) or exec(`cmd ${userInput}`, ...)\n  - execSync with a concatenated/interpolated command\n  - child_process.exec on values from req.query/req.body/req.params\n  Safe pattern to contrast: execFile / spawn with an args array and no shell\n  (e.g. execFile('ping', ['-c', '1', host])), where user input is a single\n  argument element rather than shell syntax.\nexample_vulnerable: |\n  app.get('/ping', (req, res) => {\n    exec('ping -c 1 ' + req.query.host, (err, stdout) => res.send(stdout));\n  });\nexample_secure: |\n  const { execFile } = require('child_process');\n  app.get('/ping', (req, res) => {\n    execFile('ping', ['-c', '1', req.query.host], (err, stdout) => res.send(stdout));\n  });\nreferences:\n  - url: https://owasp.org/Top10/A03_2021-Injection/\n    title: OWASP Top 10 A03 Injection\n  - url: https://cwe.mitre.org/data/definitions/78.html\n    title: CWE-78 OS Command Injection\n",
+      "judge": {
+        "grounded": true,
+        "groundedness_score": 1.0,
+        "reasoning": "The code directly concatenates user input ('host' from req.query) into the command string passed to child_process.exec without any sanitization, validation, or parameterization. This matches the vulnerable pattern explicitly described in the rule's detection criteria and example_vulnerable. No safe mechanisms (like execFile/spawn with argument arrays) are present to prevent command injection.",
+        "refutation": {
+          "refuted": false,
+          "confidence": 1.0,
+          "reasoning": "The code directly concatenates user input ('host' from req.query) into the command string passed to child_process.exec without any sanitization, validation, or parameterization. This matches the vulnerable pattern explicitly described in the rule's detection criteria and example_vulnerable. No safe mechanisms (like execFile/spawn with argument arrays) are present to prevent command injection."
+        },
+        "guardian_secondary": {
+          "grounded": true,
+          "groundedness_score": 0.9999931409485531,
+          "reasoning": "Okay I need to check if the assistant response is logically supported by the document(s) or not. \nRelevant_sentences: child_process.exec and execSync run their argument through a shell, so concatenating or interpolating user input into the command lets an attacker append shell metacharacters (;, |, &&, $()) and run arbitrary commands as the Node process user. The vulnerability is the shell parsing the combined string, before any program runs. Flag shell execution where user input can reach the command string: - exec('cmd ' + userInput, ...) or exec(`cmd ${userInput}`, ...) - execSync with a concatenated/interpolated command - child_process.exec on values from req.query/req.body/req.params Verified code snippet from server.js (lines 23-28): app.get('/ping', (req, res) => { const host = req.query.host; exec('ping -c 1 ' + host, (err, stdout) => { if (err) return res.status(500).send('failed'); res.type('text/plain').send(stdout); }); }\nRationale: The claim states that the code snippet in server.js (lines 23-28) is vulnerable to OS Command Injection via child_process.exec. The document explicitly mentions that child_process.exec runs its argument through a shell, which can lead to vulnerabilities if user input is concatenated into the command string. The document also provides a specific example of a vulnerable code snippet that matches the structure of the code in server.js. The document describes the vulnerability as occurring when user input is concatenated into the command string, which is exactly what happens in the provided code snippet. Therefore, the claim is supported by the document. \nClaim_error_span: [None] Since there is no risk associated, the score is no."
+        }
+      }
+    }
+  ],
+  "suppressed_candidates": [
+    {
+      "stage": "judge",
+      "reason": "not grounded",
+      "candidate": {
+        "finding_id": "ada8d4f1-da13-4900-bfdb-50b32db7358d",
+        "rule_id": "owasp-a01-idor-express-javascript",
+        "file_path": "server.js",
+        "line_start": 12,
+        "line_end": 15,
+        "code_snippet": "app.get('/api/orders/:id', async (req, res) => {\n  const order = await db.orders.findByPk(req.params.id);\n  if (!order) return res.sendStatus(404);\n  res.json(order);",
+        "severity": "high",
+        "claimed_severity": "high",
+        "explanation": "The route handler for '/api/orders/:id' directly uses the client-supplied 'id' to fetch an order without verifying if the requesting user is authorized to access that specific order.",
+        "grounded_in_rule_chunk": "id: owasp-a01-idor-express-javascript\ntaxonomy:\n  - owasp: A01:2021\n  - cwe: CWE-639\ntitle: Insecure Direct Object Reference in Express Routes\nseverity: high\nlanguages:\n  - javascript\n  - typescript\nframeworks:\n  - express\ndescription: |\n  Express handlers that load records purely by a client-supplied identifier\n  (req.params.id, req.query.id, req.body.id) without verifying the record\n  belongs to the authenticated user let any caller enumerate ids and read\n  or mutate other users' data. Authentication middleware alone does not\n  help: the request is authenticated, just not authorized for that object.\ndetection_criteria: |\n  Flag route handlers where a client-supplied id reaches a data lookup or\n  mutation with no ownership/authorization check between them:\n  - db.users.findById(req.params.id) returned directly\n  - UPDATE/DELETE by req.params.id without comparing owner to req.user.id\n  - routes missing both middleware-level object authorization and inline\n    ownership predicates (e.g. where: { id, userId: req.user.id })\nexample_vulnerable: |\n  app.get('/api/orders/:id', requireAuth, async (req, res) => {\n    const order = await Order.findByPk(req.params.id);\n    res.json(order);\n  });\nexample_secure: |\n  app.get('/api/orders/:id', requireAuth, async (req, res) => {\n    const order = await Order.findOne({\n      where: { id: req.params.id, userId: req.user.id },\n    });\n    if (!order) return res.sendStatus(404);\n    res.json(order);\n  });\nreferences:\n  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/\n    title: OWASP Top 10 A01 Broken Access Control\n  - url: https://cwe.mitre.org/data/definitions/639.html\n    title: CWE-639 Authorization Bypass Through User-Controlled Key\n"
+      },
+      "judge": {
+        "grounded": false,
+        "groundedness_score": 0.0,
+        "reasoning": "The candidate explanation assumes the presence of an authenticated user (e.g., 'req.user') to check authorization, but the provided code snippet lacks any authentication middleware or 'req.user' reference. The route handler is entirely unguarded, allowing any client to access orders by ID without authentication or authorization. While the code is vulnerable to IDOR, the explanation incorrectly frames the issue as a missing authorization check for an authenticated user, when in fact the code has no authentication at all. This misalignment between the explanation's assumptions and the actual code constitutes a refutation.",
+        "refutation": {
+          "refuted": true,
+          "confidence": 0.95,
+          "reasoning": "The candidate explanation assumes the presence of an authenticated user (e.g., 'req.user') to check authorization, but the provided code snippet lacks any authentication middleware or 'req.user' reference. The route handler is entirely unguarded, allowing any client to access orders by ID without authentication or authorization. While the code is vulnerable to IDOR, the explanation incorrectly frames the issue as a missing authorization check for an authenticated user, when in fact the code has no authentication at all. This misalignment between the explanation's assumptions and the actual code constitutes a refutation."
+        },
+        "guardian_secondary": {
+          "grounded": true,
+          "groundedness_score": 0.9999934493277659,
+          "reasoning": "Okay I need to check if the assistant response is logically supported by the document(s) or not. \nRelevant_sentences: Express handlers that load records purely by a client-supplied identifier (req.params.id, req.query.id, req.body.id) without verifying the record belongs to the authenticated user let any caller enumerate ids and read or mutate other users' data. Verified code snippet from server.js (lines 12-15): app.get('/api/orders/:id', async (req, res) => { const order = await db.orders.findByPk(req.params.id); if (!order) return res.sendStatus(404); res.json(order); });\nRationale: The claim states that the code snippet in server.js:12-15 is vulnerable to the owasp-a01-idor-express-javascript security finding. The document explicitly mentions that the rule 'owasp-a01-idor-express-javascript' is about Insecure Direct Object Reference (IDOR) in Express routes. The document describes IDOR as a scenario where a client-supplied identifier is used to load records without verifying if the record belongs to the authenticated user. The provided code snippet in server.js:12-15 directly uses the client-supplied 'id' to fetch an order without any authorization check. This matches the description of IDOR as per the document. Therefore, the claim is supported by the document. \nClaim_error_span: [None] Since there is no risk associated, the score is no."
+        }
+      },
+      "file_path": "server.js"
+    }
+  ],
+  "unadjudicated_candidates": [],
+  "rejected_inputs": [],
+  "files": [
+    {
+      "file_path": "db.js",
+      "status": "completed",
+      "error": null,
+      "classification": {
+        "language": "javascript",
+        "framework": null,
+        "risk_categories": []
+      },
+      "triage": {
+        "worth_deep_review": true,
+        "reasoning": "This file contains database queries and handles user input through the 'id' parameter in the 'findByPk' and 'put' functions, which could potentially lead to SQL injection if not properly sanitized."
+      },
+      "windows": [
+        {
+          "start_line": 1,
+          "end_line": 14,
+          "rule_ids": [
+            "owasp-a01-idor-express-javascript",
+            "cwe-1321-prototype-pollution-javascript",
+            "cwe-306-missing-authentication-fastify",
+            "cwe-89-sql-injection-javascript-concat",
+            "cwe-918-ssrf-javascript-fetch",
+            "cwe-601-open-redirect-javascript",
+            "cwe-943-nosql-injection-express-mongo",
+            "cwe-942-cors-shared-domain-suffix-fastify",
+            "cwe-1333-redos-javascript",
+            "cwe-306-missing-authentication-nextjs-api",
+            "cwe-79-xss-react-dangerouslysetinnerhtml",
+            "cwe-79-xss-javascript-innerhtml",
+            "cwe-306-missing-authentication-express",
+            "cwe-22-path-traversal-javascript-sendfile",
+            "cwe-798-hardcoded-secrets-javascript",
+            "cwe-79-xss-react-href-user-uri",
+            "owasp-a03-eval-user-input-javascript",
+            "owasp-a03-command-injection-javascript-exec",
+            "cwe-798-express-hardcoded-session-secret",
+            "cwe-942-cors-wildcard-credentials-express"
+          ]
+        }
+      ],
+      "finding_count": 0
+    },
+    {
+      "file_path": "server.js",
+      "status": "completed",
+      "error": null,
+      "classification": {
+        "language": "javascript",
+        "framework": "express",
+        "risk_categories": []
+      },
+      "triage": {
+        "worth_deep_review": true,
+        "reasoning": "This file contains unauthenticated direct object access, allowing any caller to read any order, and uses eval() for potentially malicious expression evaluation from user input."
+      },
+      "windows": [
+        {
+          "start_line": 1,
+          "end_line": 33,
+          "rule_ids": [
+            "owasp-a01-idor-express-javascript",
+            "cwe-601-open-redirect-javascript",
+            "cwe-306-missing-authentication-express",
+            "cwe-943-nosql-injection-express-mongo",
+            "cwe-798-express-hardcoded-session-secret",
+            "cwe-942-cors-wildcard-credentials-express",
+            "owasp-a03-command-injection-javascript-exec",
+            "owasp-a03-eval-user-input-javascript",
+            "cwe-918-ssrf-javascript-fetch",
+            "cwe-22-path-traversal-javascript-sendfile",
+            "cwe-347-jwt-weak-verification-javascript",
+            "cwe-89-sql-injection-javascript-concat",
+            "cwe-798-hardcoded-secrets-javascript",
+            "cwe-1333-redos-javascript",
+            "cwe-79-xss-javascript-innerhtml",
+            "cwe-1321-prototype-pollution-javascript",
+            "cwe-338-insecure-random-javascript"
+          ]
+        }
+      ],
+      "finding_count": 2
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+id: cwe-22-tarfile-extractall-python
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-22
+title: Arbitrary File Write via tarfile/zipfile extractall
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Extracting an untrusted archive with extractall writes member paths as-is.
+  A malicious archive can contain entries like ../../etc/cron.d/x or absolute
+  paths (and, for tar, symlinks) that write outside the target directory,
+  overwriting configuration or dropping executable files.
+detection_criteria: |
+  Flag extraction of untrusted archives without path validation:
+  - tarfile.open(uploaded).extractall(dest)
+  - zipfile.ZipFile(uploaded).extractall(dest)
+  - extract loops that join member names to a directory without checking they
+    stay inside it
+  Safe: validate each member resolves within the destination before writing
+  (Python 3.12+: extractall(filter="data")), or reject archives with
+  absolute/.. paths.
+example_vulnerable: |
+  def unpack(upload, dest):
+      with tarfile.open(fileobj=upload) as tar:
+          tar.extractall(dest)
+example_secure: |
+  def unpack(upload, dest):
+      with tarfile.open(fileobj=upload) as tar:
+          tar.extractall(dest, filter="data")  # rejects traversal/absolute paths
+references:
+  - url: https://cwe.mitre.org/data/definitions/22.html
+    title: CWE-22 Path Traversal
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

@@ -1,0 +1,39 @@
+id: cwe-918-ssrf-javascript-fetch
+taxonomy:
+  - owasp: A10:2021
+  - cwe: CWE-918
+title: Server-Side Request Forgery via User-Supplied URL in Node.js
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Passing a user-controlled URL to fetch, axios, http.get, or a similar
+  client lets an attacker make the server request internal targets: cloud
+  metadata (169.254.169.254), localhost admin ports, or private services.
+  The attack works even when the response body is never returned (blind SSRF).
+detection_criteria: |
+  Flag outbound requests whose URL derives from request data:
+  - fetch(req.query.url), axios.get(req.body.target)
+  - http.get / https.request / got / node-fetch with user URLs
+  - "import from URL", webhook-test, or link-preview features without checks
+  Mitigations to look for: scheme/host allowlist, resolving and rejecting
+  private/link-local addresses, and disabling redirects.
+example_vulnerable: |
+  app.get('/preview', async (req, res) => {
+    const r = await fetch(req.query.url);
+    res.send(await r.text());
+  });
+example_secure: |
+  const ALLOWED = new Set(['api.example.com']);
+  app.get('/preview', async (req, res) => {
+    const u = new URL(req.query.url);
+    if (u.protocol !== 'https:' || !ALLOWED.has(u.hostname)) return res.sendStatus(400);
+    res.send(await (await fetch(u, { redirect: 'error' })).text());
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/918.html
+    title: CWE-918 Server-Side Request Forgery
+  - url: https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
+    title: OWASP Top 10 A10 SSRF

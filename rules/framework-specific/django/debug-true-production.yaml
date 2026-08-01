@@ -1,0 +1,33 @@
+id: cwe-489-django-debug-true
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-489
+title: Django DEBUG = True in Deployed Settings
+severity: medium
+languages:
+  - python
+frameworks:
+  - django
+description: |
+  With DEBUG = True, Django serves detailed error pages that expose stack
+  traces, settings, SQL, and environment data to anyone who triggers an
+  exception. It also disables ALLOWED_HOSTS enforcement. Shipping it enabled
+  leaks sensitive internals to attackers.
+detection_criteria: |
+  Flag debug left on in settings that can reach production:
+  - DEBUG = True as a module-level constant in settings.py
+  - DEBUG defaulting to True (e.g. os.environ.get("DEBUG", "True"))
+  - a related ALLOWED_HOSTS = ["*"] alongside debug
+  Safe: DEBUG = False by default, driven from the environment, enabled only
+  in local development configuration.
+example_vulnerable: |
+  DEBUG = True
+  ALLOWED_HOSTS = ["*"]
+example_secure: |
+  DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
+  ALLOWED_HOSTS = os.environ["DJANGO_ALLOWED_HOSTS"].split(",")
+references:
+  - url: https://cwe.mitre.org/data/definitions/489.html
+    title: CWE-489 Active Debug Code
+  - url: https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+    title: OWASP Top 10 A05 Security Misconfiguration

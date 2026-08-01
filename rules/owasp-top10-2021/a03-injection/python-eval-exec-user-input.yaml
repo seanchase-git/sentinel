@@ -1,0 +1,36 @@
+id: owasp-a03-eval-exec-user-input-python
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-95
+title: Code Injection via eval/exec on User Input in Python
+severity: critical
+languages:
+  - python
+frameworks: []
+description: |
+  Passing user-controlled data to eval(), exec(), or compile() executes it as
+  Python with full process privileges — remote code execution in a server
+  context. This includes "safe-looking" uses like eval() of a submitted
+  expression or exec() of generated code that embeds user values.
+detection_criteria: |
+  Flag dynamic execution of user input:
+  - eval(request.args["x"]), eval(user_expr)
+  - exec(user_code) or exec(f"...{user_value}...")
+  - compile(user_source, ...) followed by exec/eval
+  - literal_eval is safe for literals; ast.literal_eval is NOT a finding
+  Safe: parse expected structured input explicitly (int(), json.loads,
+  ast.literal_eval for literals) rather than executing it.
+example_vulnerable: |
+  @app.route("/calc")
+  def calc():
+      return str(eval(request.args["expr"]))
+example_secure: |
+  @app.route("/calc")
+  def calc():
+      import ast
+      return str(ast.literal_eval(request.args["expr"]))
+references:
+  - url: https://cwe.mitre.org/data/definitions/95.html
+    title: CWE-95 Eval Injection
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

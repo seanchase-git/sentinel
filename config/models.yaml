@@ -1,0 +1,84 @@
+# Sentinel backend model definitions and provenance allowlist.
+#
+# Every model must originate from an allowed origin (FY2026 NDAA Section 1532:
+# no covered-nation AI in contractor performance environments). The registry
+# loader rejects any model whose origin is not in allowed_origins at startup.
+
+allowed_origins:
+  - USA
+
+models:
+  deep-review:
+    role: Deep security review (workhorse)
+    developer: NVIDIA
+    origin: USA
+    hf_repo: nvidia/Llama-3_3-Nemotron-Super-49B-v1_5
+    gguf: ~/.lmstudio/models/bartowski/nvidia_Llama-3_3-Nemotron-Super-49B-v1_5-GGUF/nvidia_Llama-3_3-Nemotron-Super-49B-v1_5-Q8_0-00001-of-00002.gguf
+    port: 8090
+    mode: chat
+    ctx: 65536
+    parallel: 2
+    extra_flags: ["-ctk", "q8_0", "-ctv", "q8_0"]
+
+  input-guard:
+    role: Input guardrail classifier
+    developer: Meta
+    origin: USA
+    hf_repo: meta-llama/Llama-Guard-3-8B
+    gguf: ~/.lmstudio/models/mradermacher/Llama-Guard-3-8B-GGUF/Llama-Guard-3-8B.Q8_0.gguf
+    port: 8091
+    mode: chat
+    ctx: 16384
+    parallel: 2
+
+  triage:
+    role: Cheap triage
+    developer: IBM
+    origin: USA
+    hf_repo: ibm-granite/granite-3.3-2b-instruct
+    gguf: ~/.lmstudio/models/ibm-granite/granite-3.3-2b-instruct-GGUF/granite-3.3-2b-instruct-Q8_0.gguf
+    port: 8092
+    mode: chat
+    ctx: 32768
+    parallel: 4
+
+  judge:
+    role: Groundedness judge
+    developer: IBM
+    origin: USA
+    hf_repo: ibm-granite/granite-guardian-3.3-8b
+    gguf: ~/.lmstudio/models/ibm-granite/granite-guardian-3.3-8b-GGUF/granite-guardian-3.3-8b-Q8_0.gguf
+    port: 8093
+    mode: chat
+    ctx: 16384
+    parallel: 2
+
+  classify:
+    role: Language/framework/risk classifier
+    developer: Meta
+    origin: USA
+    hf_repo: meta-llama/Llama-3.2-1B-Instruct
+    gguf: ~/.lmstudio/models/bartowski/Llama-3.2-1B-Instruct-GGUF/Llama-3.2-1B-Instruct-Q8_0.gguf
+    port: 8094
+    mode: chat
+    ctx: 16384
+    parallel: 4
+
+  nomic-embed:
+    role: Rule/code embedder
+    developer: Nomic AI
+    origin: USA
+    hf_repo: nomic-ai/nomic-embed-text-v1.5
+    gguf: ~/.lmstudio/models/nomic-ai/nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.f16.gguf
+    port: 8095
+    mode: embedding
+    ctx: 8192
+    parallel: 4
+    # This GGUF declares n_ctx_train=2048, and llama.cpp clamps per-slot context
+    # to it — raising ctx/ubatch beyond 2048 is a no-op (verified: slots stay at
+    # 2048 and a 4585-token input still 400s). ctx 8192 / parallel 4 = 2048 per
+    # slot, exactly n_ctx_train, so no training-overflow warning. llama.cpp
+    # defaults -ub to 512 and an embedding input cannot span physical batches, so
+    # -ub must be raised to 2048 to use the full slot. The producer side must
+    # still bound embed input to <2048 real tokens — see embedder byte budget.
+    extra_flags: ["--pooling", "mean", "-ub", "2048", "-b", "2048"]

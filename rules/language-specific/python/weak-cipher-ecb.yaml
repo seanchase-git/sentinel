@@ -1,0 +1,33 @@
+id: cwe-327-weak-cipher-ecb-python
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-327
+title: Weak Cipher or ECB Mode for Encryption
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  ECB mode encrypts identical plaintext blocks to identical ciphertext,
+  leaking structure and enabling block manipulation; DES, 3DES, RC4, and
+  Blowfish are broken or too weak for modern use. Choosing them for
+  confidentiality leaves data effectively unprotected.
+detection_criteria: |
+  Flag weak symmetric crypto choices:
+  - AES.new(key, AES.MODE_ECB) (pycryptodome) or Cipher(..., modes.ECB())
+  - algorithms.TripleDES / DES / ARC4 / Blowfish for confidentiality
+  - encryption without an authenticated mode where integrity matters
+  Safe: AES-GCM (authenticated) or AES-CBC with a random IV plus a separate
+  MAC; use a vetted library like cryptography's Fernet for simple cases.
+example_vulnerable: |
+  cipher = AES.new(key, AES.MODE_ECB)
+  ct = cipher.encrypt(pad(plaintext, 16))
+example_secure: |
+  aesgcm = AESGCM(key)
+  nonce = os.urandom(12)
+  ct = nonce + aesgcm.encrypt(nonce, plaintext, None)
+references:
+  - url: https://cwe.mitre.org/data/definitions/327.html
+    title: CWE-327 Use of a Broken or Risky Cryptographic Algorithm
+  - url: https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
+    title: OWASP Top 10 A02 Cryptographic Failures

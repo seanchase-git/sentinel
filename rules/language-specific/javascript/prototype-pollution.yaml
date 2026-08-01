@@ -1,0 +1,48 @@
+id: cwe-1321-prototype-pollution-javascript
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-1321
+title: Prototype Pollution via Unsafe Recursive Merge
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Copying keys from user-controlled objects into a target without rejecting
+  __proto__, constructor, or prototype lets an attacker modify Object's
+  prototype. Polluted properties then appear on every object, enabling
+  denial of service, property injection, and sometimes RCE via gadget chains.
+detection_criteria: |
+  Flag recursive merges / deep-clones / setters that walk attacker-controlled
+  keys without a __proto__/constructor/prototype guard:
+  - a hand-written deepMerge(target, source) over req.body
+  - assigning nested paths from user input: obj[a][b] = value where a/b are
+    user-provided
+  - bracket assignment target[userKey] = userVal with userKey unchecked
+  Safe: reject dangerous keys, use Map, Object.create(null), or a maintained
+  library with prototype-pollution protections.
+example_vulnerable: |
+  function merge(target, source) {
+    for (const key in source) {
+      if (typeof source[key] === 'object') merge(target[key] = target[key] || {}, source[key]);
+      else target[key] = source[key];
+    }
+    return target;
+  }
+  merge({}, req.body);
+example_secure: |
+  function merge(target, source) {
+    for (const key of Object.keys(source)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      if (source[key] && typeof source[key] === 'object')
+        merge(target[key] = target[key] || {}, source[key]);
+      else target[key] = source[key];
+    }
+    return target;
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/1321.html
+    title: CWE-1321 Prototype Pollution
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

@@ -1,0 +1,32 @@
+id: cwe-295-tls-verify-disabled-python
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-295
+title: TLS Certificate Verification Disabled
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Disabling certificate verification on outbound HTTPS makes the connection
+  trivially interceptable: any machine-in-the-middle can present its own
+  certificate and read or modify the traffic, including credentials and
+  tokens. verify=False silences a real security control rather than fixing
+  the underlying trust issue.
+detection_criteria: |
+  Flag disabled or bypassed TLS verification:
+  - requests.get/post(..., verify=False)
+  - ssl._create_unverified_context() or ssl.CERT_NONE for client connections
+  - urllib3 with cert_reqs='CERT_NONE'
+  - httpx.Client(verify=False)
+  Safe: leave verification enabled; for a private CA, pass the CA bundle
+  (verify="/path/ca.pem") rather than disabling checks.
+example_vulnerable: |
+  resp = requests.get("https://api.internal/secrets", verify=False)
+example_secure: |
+  resp = requests.get("https://api.internal/secrets", verify="/etc/ssl/internal-ca.pem")
+references:
+  - url: https://cwe.mitre.org/data/definitions/295.html
+    title: CWE-295 Improper Certificate Validation
+  - url: https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
+    title: OWASP Top 10 A02 Cryptographic Failures

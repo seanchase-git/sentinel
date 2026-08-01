@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+.run/
+.pytest_cache/
+.ruff_cache/
+sentinel-report/
+out/
+DEVLOG.md
+dist/
+*.egg-info/
+.DS_Store
+BACKLOG.md
+benchmarks/

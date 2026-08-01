@@ -1,0 +1,38 @@
+id: cwe-614-insecure-session-cookie-flask
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-614
+title: Session Cookie Missing Secure/HttpOnly/SameSite Flags
+severity: medium
+languages:
+  - python
+frameworks:
+  - flask
+description: |
+  Session cookies without HttpOnly are readable by JavaScript (so XSS can
+  steal them); without Secure they are sent over plain HTTP where they can be
+  intercepted; without SameSite they are attached to cross-site requests
+  (aiding CSRF). Explicitly disabling these flags weakens session protection.
+detection_criteria: |
+  Flag session/cookie configuration that disables protective flags:
+  - SESSION_COOKIE_HTTPONLY = False, SESSION_COOKIE_SECURE = False
+  - SESSION_COOKIE_SAMESITE = None (or unset where cross-site is a concern)
+  - response.set_cookie(..., httponly=False, secure=False) for auth cookies
+  Safe: set HttpOnly and Secure True and SameSite to "Lax" or "Strict" for
+  session/auth cookies.
+example_vulnerable: |
+  app.config.update(
+      SESSION_COOKIE_HTTPONLY=False,
+      SESSION_COOKIE_SECURE=False,
+  )
+example_secure: |
+  app.config.update(
+      SESSION_COOKIE_HTTPONLY=True,
+      SESSION_COOKIE_SECURE=True,
+      SESSION_COOKIE_SAMESITE="Lax",
+  )
+references:
+  - url: https://cwe.mitre.org/data/definitions/614.html
+    title: CWE-614 Sensitive Cookie Without Secure Attribute
+  - url: https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+    title: OWASP Top 10 A05 Security Misconfiguration

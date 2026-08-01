@@ -1,0 +1,38 @@
+id: owasp-a03-command-injection-javascript-exec
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-78
+title: OS Command Injection via child_process.exec
+severity: critical
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  child_process.exec and execSync run their argument through a shell, so
+  concatenating or interpolating user input into the command lets an attacker
+  append shell metacharacters (;, |, &&, $()) and run arbitrary commands as
+  the Node process user. The vulnerability is the shell parsing the combined
+  string, before any program runs.
+detection_criteria: |
+  Flag shell execution where user input can reach the command string:
+  - exec('cmd ' + userInput, ...) or exec(`cmd ${userInput}`, ...)
+  - execSync with a concatenated/interpolated command
+  - child_process.exec on values from req.query/req.body/req.params
+  Safe pattern to contrast: execFile / spawn with an args array and no shell
+  (e.g. execFile('ping', ['-c', '1', host])), where user input is a single
+  argument element rather than shell syntax.
+example_vulnerable: |
+  app.get('/ping', (req, res) => {
+    exec('ping -c 1 ' + req.query.host, (err, stdout) => res.send(stdout));
+  });
+example_secure: |
+  const { execFile } = require('child_process');
+  app.get('/ping', (req, res) => {
+    execFile('ping', ['-c', '1', req.query.host], (err, stdout) => res.send(stdout));
+  });
+references:
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection
+  - url: https://cwe.mitre.org/data/definitions/78.html
+    title: CWE-78 OS Command Injection

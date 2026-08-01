@@ -1,0 +1,32 @@
+id: cwe-502-yaml-unsafe-load-python
+taxonomy:
+  - owasp: A08:2021
+  - cwe: CWE-502
+title: Unsafe YAML Deserialization via yaml.load / Loader
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  PyYAML's yaml.load with the full Loader (or yaml.unsafe_load / FullLoader
+  in some versions) can instantiate arbitrary Python objects through tags
+  like !!python/object/apply, allowing code execution when parsing
+  attacker-influenced YAML — config uploads, API bodies, or webhook payloads.
+detection_criteria: |
+  Flag unsafe YAML parsing of data that may cross a trust boundary:
+  - yaml.load(data, Loader=yaml.Loader) or Loader=yaml.UnsafeLoader
+  - yaml.unsafe_load(data)
+  - yaml.load(data) written for an older PyYAML where it defaulted to unsafe
+  Safe: yaml.safe_load(data) or Loader=yaml.SafeLoader, which only builds
+  standard scalars/lists/dicts.
+example_vulnerable: |
+  def load_config(request):
+      return yaml.load(request.data, Loader=yaml.Loader)
+example_secure: |
+  def load_config(request):
+      return yaml.safe_load(request.data)
+references:
+  - url: https://cwe.mitre.org/data/definitions/502.html
+    title: CWE-502 Deserialization of Untrusted Data
+  - url: https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+    title: OWASP Top 10 A08

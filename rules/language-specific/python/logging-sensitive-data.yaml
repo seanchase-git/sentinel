@@ -1,0 +1,31 @@
+id: cwe-532-logging-sensitive-data-python
+taxonomy:
+  - owasp: A09:2021
+  - cwe: CWE-532
+title: Sensitive Data Written to Logs
+severity: medium
+languages:
+  - python
+frameworks: []
+description: |
+  Logging passwords, tokens, API keys, full card numbers, or session
+  identifiers writes them to log files, aggregators, and error trackers where
+  they persist and are visible to anyone with log access — a common source of
+  credential leakage that outlives the request.
+detection_criteria: |
+  Flag secrets or credentials passed to logging:
+  - logger.info/debug(f"password={password}") or logging the request body /
+    Authorization header
+  - print(token) / logging api keys, secrets, or full PANs
+  - dumping an entire user or request object that contains credentials
+  Safe: log non-sensitive identifiers only; redact or omit secrets before
+  logging.
+example_vulnerable: |
+  logger.info("login attempt user=%s password=%s", username, password)
+example_secure: |
+  logger.info("login attempt user=%s", username)
+references:
+  - url: https://cwe.mitre.org/data/definitions/532.html
+    title: CWE-532 Insertion of Sensitive Information into Log File
+  - url: https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/
+    title: OWASP Top 10 A09

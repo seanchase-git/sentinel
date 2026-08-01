@@ -1,0 +1,35 @@
+id: cwe-79-xss-javascript-innerhtml
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: DOM-Based XSS via innerHTML with User Input
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Assigning user-controlled strings to innerHTML, outerHTML, or
+  insertAdjacentHTML, or passing them to document.write, parses attacker
+  markup into the live DOM. Injected <img onerror>, <svg onload>, or script
+  gadgets then run in the victim's session, enabling token theft and
+  account takeover.
+detection_criteria: |
+  Flag sinks receiving non-constant strings derived from URLs, form fields,
+  fetch responses, postMessage data, or storage:
+  - element.innerHTML = userValue (including template literals)
+  - element.outerHTML = ..., element.insertAdjacentHTML(..., userValue)
+  - document.write(userValue)
+  - jQuery .html(userValue), .append(userHtmlString)
+  React's dangerouslySetInnerHTML with user data is the same sink.
+example_vulnerable: |
+  const params = new URLSearchParams(location.search);
+  document.querySelector('#greeting').innerHTML = `Hello ${params.get('name')}`;
+example_secure: |
+  const params = new URLSearchParams(location.search);
+  document.querySelector('#greeting').textContent = `Hello ${params.get('name')}`;
+references:
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-site Scripting
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

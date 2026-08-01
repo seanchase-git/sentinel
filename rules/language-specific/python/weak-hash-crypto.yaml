@@ -1,0 +1,36 @@
+id: cwe-327-weak-hash-python
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-327
+title: Weak or Broken Cryptographic Hash for Passwords or Integrity
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  MD5 and SHA-1 are broken for collision resistance, and even SHA-256 is
+  unsuitable for password storage because it is fast enough for offline
+  brute force at billions of guesses per second. Password hashes need a
+  memory-hard, salted KDF; signatures and certificates need modern
+  algorithms.
+detection_criteria: |
+  Flag weak primitives in security-sensitive roles:
+  - hashlib.md5 / hashlib.sha1 for passwords, tokens, signatures, or
+    file-integrity checks that cross a trust boundary
+  - hashlib.sha256(password) — fast hash used for password storage,
+    with or without a manual salt
+  - DES/3DES/RC4/ECB-mode usage via pycryptodome or cryptography APIs
+  Safe pattern: argon2, scrypt, or bcrypt for passwords (or hashlib.scrypt);
+  hmac.compare_digest for comparisons. MD5 for non-security cache keys with
+  usedforsecurity=False is not a finding.
+example_vulnerable: |
+  def store_password(pw):
+      return hashlib.md5(pw.encode()).hexdigest()
+example_secure: |
+  def store_password(pw):
+      return bcrypt.hashpw(pw.encode(), bcrypt.gensalt())
+references:
+  - url: https://cwe.mitre.org/data/definitions/327.html
+    title: CWE-327 Use of a Broken or Risky Cryptographic Algorithm
+  - url: https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
+    title: OWASP Top 10 A02 Cryptographic Failures

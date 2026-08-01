@@ -1,0 +1,38 @@
+id: cwe-79-xss-react-href-user-uri
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: XSS via User-Controlled URL in href/src Attributes
+severity: medium
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - react
+  - nextjs
+description: |
+  Putting a user-controlled string into an href or src attribute allows a
+  javascript: (or data:) URI that runs script when the link is clicked or the
+  resource loads. React does not sanitize URL schemes in attribute values, so
+  <a href={userUrl}> is exploitable.
+detection_criteria: |
+  Flag user-controlled values used as URLs in link/resource attributes:
+  - <a href={props.url}> / <a href={data.website}> from user input
+  - element.href = userValue, iframe/src or img/src from user input
+  - href built from query params without scheme validation
+  Safe: validate the scheme is http/https (or a relative path) before use, or
+  strip javascript:/data: schemes.
+example_vulnerable: |
+  function Profile({ site }) {
+    return <a href={site}>website</a>;
+  }
+example_secure: |
+  function Profile({ site }) {
+    const safe = /^https?:\/\//i.test(site) ? site : '#';
+    return <a href={safe} rel="noopener noreferrer">website</a>;
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-site Scripting
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

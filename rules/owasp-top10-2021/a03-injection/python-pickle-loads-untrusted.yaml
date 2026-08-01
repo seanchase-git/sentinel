@@ -1,0 +1,37 @@
+id: owasp-a08-pickle-loads-untrusted-python
+taxonomy:
+  - owasp: A08:2021
+  - cwe: CWE-502
+title: Insecure Deserialization via pickle on Untrusted Data
+severity: critical
+languages:
+  - python
+frameworks: []
+description: |
+  pickle.loads / pickle.load (and shelve, or yaml.load with an unsafe
+  Loader) execute arbitrary code during deserialization via __reduce__.
+  Deserializing any attacker-influenced bytes — request bodies, cookies,
+  cache values, message-queue payloads, files uploaded by users — is
+  equivalent to remote code execution.
+detection_criteria: |
+  Flag deserialization of data that may cross a trust boundary:
+  - pickle.loads(request.data), pickle.load(uploaded_file)
+  - yaml.load(text, Loader=yaml.Loader/UnsafeLoader) or yaml.unsafe_load
+    on external input (safe: yaml.safe_load / SafeLoader)
+  - marshal.loads on external input
+  - jsonpickle.decode on request-derived strings
+  Deserializing values read from Redis/memcached that other systems can
+  write also counts.
+example_vulnerable: |
+  @app.route("/import", methods=["POST"])
+  def import_state():
+      state = pickle.loads(request.data)
+example_secure: |
+  @app.route("/import", methods=["POST"])
+  def import_state():
+      state = json.loads(request.data)
+references:
+  - url: https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+    title: OWASP Top 10 A08 Software and Data Integrity Failures
+  - url: https://cwe.mitre.org/data/definitions/502.html
+    title: CWE-502 Deserialization of Untrusted Data

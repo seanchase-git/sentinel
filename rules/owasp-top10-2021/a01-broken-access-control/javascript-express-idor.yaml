@@ -1,0 +1,42 @@
+id: owasp-a01-idor-express-javascript
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-639
+title: Insecure Direct Object Reference in Express Routes
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - express
+description: |
+  Express handlers that load records purely by a client-supplied identifier
+  (req.params.id, req.query.id, req.body.id) without verifying the record
+  belongs to the authenticated user let any caller enumerate ids and read
+  or mutate other users' data. Authentication middleware alone does not
+  help: the request is authenticated, just not authorized for that object.
+detection_criteria: |
+  Flag route handlers where a client-supplied id reaches a data lookup or
+  mutation with no ownership/authorization check between them:
+  - db.users.findById(req.params.id) returned directly
+  - UPDATE/DELETE by req.params.id without comparing owner to req.user.id
+  - routes missing both middleware-level object authorization and inline
+    ownership predicates (e.g. where: { id, userId: req.user.id })
+example_vulnerable: |
+  app.get('/api/orders/:id', requireAuth, async (req, res) => {
+    const order = await Order.findByPk(req.params.id);
+    res.json(order);
+  });
+example_secure: |
+  app.get('/api/orders/:id', requireAuth, async (req, res) => {
+    const order = await Order.findOne({
+      where: { id: req.params.id, userId: req.user.id },
+    });
+    if (!order) return res.sendStatus(404);
+    res.json(order);
+  });
+references:
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control
+  - url: https://cwe.mitre.org/data/definitions/639.html
+    title: CWE-639 Authorization Bypass Through User-Controlled Key

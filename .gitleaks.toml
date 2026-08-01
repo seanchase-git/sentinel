@@ -1,0 +1,44 @@
+# gitleaks configuration
+#
+# This repository contains fake secrets on purpose. A rule that teaches a model
+# to detect a hardcoded Stripe key has to contain something shaped like a
+# hardcoded Stripe key, and the deliberately vulnerable fixture apps exist to be
+# found by the scanner under test.
+#
+# Allowlisting them is not a way to quiet the tool. It is the opposite: a scan
+# that always reports the same five known-intentional findings trains everyone to
+# ignore the output, and the first real credential lands in that noise. With
+# these paths excluded, a non-empty gitleaks run means something is actually
+# wrong.
+#
+# Every allowlisted value is a placeholder of the form sk_live_51Hxxxx... None of
+# them authenticate against anything.
+#
+#   gitleaks dir . --redact
+#
+# Do NOT add a path here to make a scan pass. If a real secret is flagged, rotate
+# it and remove it from history.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Rule corpus examples. Every rule ships example_vulnerable and example_secure so
+the reviewing model can see the shape it is being asked to detect. Secrets rules
+therefore contain placeholder credentials by definition.
+"""
+paths = [
+  '''rules/language-specific/python/hardcoded-secrets\.yaml''',
+  '''rules/language-specific/javascript/hardcoded-secrets\.yaml''',
+]
+
+[[allowlists]]
+description = """
+Deliberately vulnerable fixture applications. These are the test corpus Sentinel
+reviews in its own integration tests, with frozen expected findings. A hardcoded
+secret here is the thing being detected.
+"""
+paths = [
+  '''tests/fixtures/vulnerable_apps/.*''',
+]

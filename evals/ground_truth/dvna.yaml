@@ -1,0 +1,311 @@
+# Ground truth for Damn Vulnerable NodeJS Application (appsecco/dvna)
+#
+# First public benchmark target. Transcribed from the application's OWN
+# documented vulnerability inventory (docs/solution/*.md, one page per OWASP
+# category) BEFORE Sentinel was ever run against it. Nothing here was shaped by
+# what Sentinel happened to find, which is the property that makes recall a
+# measurement rather than a bound.
+#
+# Clone: git clone --depth 1 https://github.com/appsecco/dvna
+# Pinned at 9ba473a. 12 walker-eligible JavaScript files.
+#
+# Set `target` to wherever you cloned it, or pass the path on the command line.
+#
+# REVISION HISTORY
+#   2026-07-31 (a): initial transcription, 7 entries.
+#   2026-07-31 (b): audited line-by-line against source at 9ba473a. All 7
+#     original entries confirmed at their claimed line and CWE; none removed.
+#     Nine documented, walker-eligible defects were MISSING and are now added,
+#     taking the in-scope inventory from 7 to 16. Recall computed against the
+#     7-entry version was inflated by a short denominator and must not be
+#     quoted.
+
+target: ./benchmarks/dvna
+revision: 9ba473a
+adjudicated_on: 2026-07-31
+adjudicated_by: >
+  Transcribed from docs/solution/*.md, then every line and CWE independently
+  verified against source at 9ba473a by two reviewers working separately.
+exhaustive: false
+exhaustive_note: >
+  DVNA documents 19 distinct defect units. 16 live in walker-eligible
+  JavaScript and are all transcribed below. The remaining 3 are the A7 XSS
+  defects, which live in EJS templates
+  (views/app/products.ejs:20, :49; views/app/adminusers.ejs:40) and are out of
+  scope because src/sentinel/ingest/walker.py:16 maps only .py/.js/.jsx/.mjs/
+  .cjs/.ts/.tsx. They are excluded for that reason and NOT because they are
+  not real.
+
+  Still marked exhaustive:false deliberately. The scorer's definition of
+  exhaustive is that every unmatched finding is a proven false positive
+  (see `exhaustive` in evals/score.py score_one), which is a stronger claim than
+  "every DVNA-documented defect is represented here". DVNA's docs are an
+  inventory of what its authors planted, not a proof that nothing else is
+  wrong. Completing the documented inventory does not license exhaustive:true.
+
+# Of the 16 in-scope defects, only 6 are covered by a JavaScript rule in the
+# current corpus. `corpus_coverage` records the covering rule id, or `none`.
+# Raw recall over all 16 therefore conflates two very different failures:
+# "the reviewer had a rule and missed it" and "no rule exists". Report both
+# raw recall and recall-over-covered when quoting a number.
+vulnerabilities:
+  - id: sql-injection-sequelize-raw
+    file: core/appHandler.js
+    line: 11
+    cwe: CWE-89
+    severity: high
+    corpus_coverage: cwe-89-sql-injection-javascript-concat
+    summary: >
+      The query string is concatenated from req.body.login at line 10 and
+      executed by db.sequelize.query(query) at line 11 with no bind
+      parameters. DVNA A1 (docs/solution/a1-injection.md).
+    detected_by_sentinel: unknown
+
+  - id: command-injection-ping
+    file: core/appHandler.js
+    line: 39
+    cwe: CWE-78
+    severity: high
+    corpus_coverage: owasp-a03-command-injection-javascript-exec
+    summary: >
+      exec('ping -c 2 ' + req.body.address) concatenates request input directly
+      into a shell command. DVNA A1 (docs/solution/a1-injection.md).
+    detected_by_sentinel: unknown
+
+  - id: open-redirect
+    file: core/appHandler.js
+    line: 188
+    cwe: CWE-601
+    severity: medium
+    corpus_coverage: cwe-601-open-redirect-javascript
+    summary: >
+      res.redirect(req.query.url) redirects to an unvalidated target.
+      DVNA Ax (docs/solution/ax-unvalidated-redirects-and-forwards.md).
+    detected_by_sentinel: unknown
+
+  - id: mathjs-rce-eval-user-input
+    file: core/appHandler.js
+    line: 197
+    cwe: CWE-94
+    severity: high
+    corpus_coverage: owasp-a03-eval-user-input-javascript
+    summary: >
+      mathjs.eval(req.body.eqn) evaluates a user-supplied expression. mathjs is
+      pinned to 3.10.1 (package.json:25); versions before 3.17.0 allow sandbox
+      escape to full RCE via CVE-2017-1001002, which NVD maps to CWE-94.
+      DVNA documents this as A9 "mathjs Remote Code Execution"
+      (docs/solution/a9-using-components-with-known-vulnerability.md), NOT A1.
+      The earlier revision of this file mis-attributed it to A1.
+    cwe_note: >
+      Sentinel's covering rule declares CWE-95 (Eval Injection), a child of
+      CWE-94. Ground truth keeps the CVE-backed CWE-94; the scorer resolves the
+      parent/child relation rather than either label being bent to fit.
+    detected_by_sentinel: unknown
+
+  - id: insecure-deserialization
+    file: core/appHandler.js
+    line: 218
+    cwe: CWE-502
+    severity: high
+    corpus_coverage: none
+    summary: >
+      serialize.unserialize() on uploaded file contents; node-serialize 0.0.4
+      (package.json:29) executes embedded functions. DVNA A8.
+    detected_by_sentinel: unknown
+
+  - id: xxe-external-entities
+    file: core/appHandler.js
+    line: 235
+    cwe: CWE-611
+    severity: high
+    corpus_coverage: none
+    summary: >
+      libxmljs.parseXmlString(..., {noent: true}) enables entity substitution on
+      uploaded XML. DVNA A4.
+    detected_by_sentinel: unknown
+
+  - id: predictable-password-reset-token
+    file: core/authHandler.js
+    line: 49
+    also_at: [78]
+    cwe: CWE-640
+    severity: high
+    corpus_coverage: none
+    summary: >
+      The reset token is compared against md5(login), so it is derivable from a
+      known username. Checked at line 49 (resetPw) and again at line 78
+      (resetPwSubmit). DVNA A2.
+    detected_by_sentinel: unknown
+
+  # ---- Added 2026-07-31 (b). Documented by DVNA, missing from revision (a). ----
+
+  - id: hardcoded-session-secret
+    file: server.js
+    line: 24
+    cwe: CWE-321
+    severity: high
+    corpus_coverage: cwe-798-express-hardcoded-session-secret
+    summary: >
+      express-session is configured with the literal secret 'keyboard cat',
+      the value used in Express's own example snippets. Anyone who reads the
+      source can forge a session cookie and impersonate any user. DVNA A2
+      "Insecure Session Secret" (docs/solution/a2-broken-auth.md:40).
+    cwe_note: >
+      CWE-321 (Hard-coded Cryptographic Key) is the strict mapping: the literal
+      is the HMAC key that signs the session cookie. MITRE places CWE-321 under
+      CWE-798, which is what Sentinel's rule declares. Ground truth keeps the
+      specific label; the scorer resolves the relation. The parent was NOT
+      chosen merely to make the existing rule score.
+    detected_by_sentinel: unknown
+
+  - id: user-list-api-password-hash-disclosure
+    file: core/appHandler.js
+    line: 210
+    cwe: CWE-201
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      listUsersAPI runs db.User.findAll({}) with no attribute projection and
+      serializes the entire user object, including the bcrypt password hash,
+      into the JSON response. DVNA A3 "Hashed Passwords Disclosed"
+      (docs/solution/a3-sensitive-data-exposure.md:3).
+    detected_by_sentinel: unknown
+
+  - id: sequelize-query-logging
+    file: models/index.js
+    line: 10
+    also_at: [12]
+    cwe: CWE-532
+    severity: low
+    corpus_coverage: none
+    summary: >
+      Both Sequelize constructors are created without `logging: false`, so
+      every query, including those carrying credentials and personal data, is
+      written to stdout by default. DVNA A3 "Logging of sensitive information"
+      (docs/solution/a3-sensitive-data-exposure.md).
+    detected_by_sentinel: unknown
+
+  - id: users-api-missing-admin-authorization
+    file: routes/app.js
+    line: 42
+    cwe: CWE-862
+    severity: high
+    corpus_coverage: none
+    summary: >
+      GET /admin/usersapi is guarded by authHandler.isAuthenticated only. Any
+      authenticated user, not just an admin, can list every user. The admin
+      gate exists solely in the client-side template. DVNA A5 "Unauthorized
+      Access to Users API" (docs/solution/a5-broken-access-control.md:3).
+    doc_drift_note: >
+      The DVNA doc names the route /admin/api/users. The actual route at
+      9ba473a is /admin/usersapi (routes/app.js:42). Source wins.
+    detected_by_sentinel: unknown
+
+  - id: user-edit-idor
+    file: core/appHandler.js
+    line: 147
+    cwe: CWE-639
+    severity: high
+    corpus_coverage: owasp-a01-idor-express-javascript
+    summary: >
+      userEditSubmit looks the user up by req.body.id and never compares it to
+      req.user.id, so any authenticated user can change any other user's
+      password. DVNA A5 "Missing Authorization check in Edit User"
+      (docs/solution/a5-broken-access-control.md).
+    detected_by_sentinel: unknown
+
+  - id: calculator-stack-trace-disclosure
+    file: core/appHandler.js
+    line: 197
+    cwe: CWE-209
+    severity: low
+    corpus_coverage: none
+    summary: >
+      mathjs.eval is called with no try/catch and the app has no error handler,
+      so invalid input returns a stack trace with internal file paths. DVNA
+      defaults to development mode (models/index.js:6). DVNA A6 "Application
+      sends Stack Trace" (docs/solution/a6-securty-misconfig.md:3).
+    scope_note: >
+      Shares line 197 with mathjs-rce-eval-user-input. These are two distinct
+      documented defects (unsafe evaluation vs. unhandled exception), but the
+      scorer assigns findings one-to-one, so only the CWE distinguishes them.
+      Environment-dependent: requires NODE_ENV unset or development.
+    detected_by_sentinel: unknown
+
+  - id: x-powered-by-header
+    file: server.js
+    line: 11
+    cwe: CWE-497
+    severity: low
+    corpus_coverage: none
+    summary: >
+      The Express app is created without app.disable('x-powered-by'), so every
+      response advertises the framework. DVNA A6 "X-Powered-By header"
+      (docs/solution/a6-securty-misconfig.md).
+    scope_note: >
+      An absent hardening call, not a wrong line of code. Anchored to the
+      express() call at server.js:11 because that is where the configuration
+      would go.
+    detected_by_sentinel: unknown
+
+  - id: missing-csrf-protection
+    file: routes/app.js
+    line: 56
+    also_at: [58]
+    cwe: CWE-352
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      No anti-CSRF token is required on state-changing POST routes. DVNA
+      documents POST /modifyproduct (routes/app.js:56) and POST /useredit
+      (routes/app.js:58). DVNA Ax "CSRF in Add/Edit product, User Edit"
+      (docs/solution/ax-csrf.md:3).
+    scope_note: >
+      Recorded as ONE defect with two manifestation lines rather than one unit
+      per unprotected route, so a single documented weakness does not multiply
+      the recall denominator.
+    detected_by_sentinel: unknown
+
+  - id: insufficient-failed-login-logging
+    file: core/passport.js
+    line: 36
+    also_at: [39]
+    cwe: CWE-778
+    severity: low
+    corpus_coverage: none
+    summary: >
+      Both failed-authentication branches return without recording a security
+      event, so credential stuffing leaves no trace. DVNA A10
+      (docs/solution/a10-insufficient-logging.md:5).
+    scope_note: >
+      Weakest entry in this file. The DVNA page pins no line; the location is
+      inferred from its winston remediation. A10's monitoring, storage and
+      alerting claims are genuinely outside static analysis and are NOT
+      transcribed. Only the concrete absence of failed-login logging is.
+    detected_by_sentinel: unknown
+
+expected_coverage_note: >
+  Six of the 16 in-scope defects are covered by a JavaScript rule in the
+  current corpus (see per-entry `corpus_coverage`): SQL injection, command
+  injection, open redirect, eval of user input, the hardcoded session secret,
+  and the user-edit IDOR. Those six are a fair test of detection.
+
+  The other ten are corpus gaps and should be read as such rather than as
+  reasoning failures: insecure deserialization (both CWE-502 rules are
+  Python-only — pickle.loads and yaml.unsafe_load — so DVNA's node-serialize
+  defect is uncovered), XXE,
+  password-reset tokens, password-hash disclosure, query logging, missing
+  authorization (CWE-862 has no JavaScript rule; the corpus covers CWE-306
+  missing *authentication*, which is a different weakness), stack-trace
+  disclosure, X-Powered-By, CSRF, and failed-login logging.
+
+  Revision (a) of this file claimed a rule existed for insecure
+  deserialization. That was wrong.
+
+  Four of the uncovered ten (stack trace, X-Powered-By, CSRF, failed-login
+  logging) are absence-shaped: nothing in the source is wrong, something is
+  missing. Sentinel's applicability gate is built around naming an untrusted
+  source and a sink (src/sentinel/graph/evidence.py), so absence-shaped
+  defects need the sink-and-enforcement-reason treatment that currently exists
+  only for access-control CWEs. Counting them in raw recall is honest; reading
+  a low raw recall as a reasoning failure is not.

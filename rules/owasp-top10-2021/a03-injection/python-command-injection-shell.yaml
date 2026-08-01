@@ -1,0 +1,34 @@
+id: owasp-a03-command-injection-python-shell
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-78
+title: OS Command Injection via shell=True or os.system
+severity: critical
+languages:
+  - python
+frameworks: []
+description: |
+  Passing user-controlled strings to os.system, os.popen, or subprocess
+  functions with shell=True lets an attacker append shell metacharacters
+  (;, |, &&, $()) to run arbitrary commands as the application user.
+  The shell interprets the whole string, so any interpolated user input
+  becomes executable syntax.
+detection_criteria: |
+  Flag command execution where user input can reach the command string:
+  - os.system(f"... {user_input}") or os.system("..." + user_input)
+  - subprocess.run/call/Popen/check_output with shell=True and a formatted
+    or concatenated command string
+  - os.popen with interpolated input
+  Safe pattern to contrast: subprocess.run([...], shell=False) with a list
+  argv where user input is a single list element.
+example_vulnerable: |
+  def ping(host):
+      os.system(f"ping -c 1 {host}")
+example_secure: |
+  def ping(host):
+      subprocess.run(["ping", "-c", "1", host], check=True)
+references:
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection
+  - url: https://cwe.mitre.org/data/definitions/78.html
+    title: CWE-78 OS Command Injection

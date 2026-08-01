@@ -1,0 +1,38 @@
+id: cwe-915-mass-assignment-django-modelform
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-915
+title: Mass Assignment via ModelForm fields = "__all__"
+severity: high
+languages:
+  - python
+frameworks:
+  - django
+description: |
+  A ModelForm or DRF serializer that exposes every model field ("__all__" or
+  exclude-based whitelisting) lets a client set fields they should not
+  control — is_staff, is_superuser, owner, balance, role — by adding them to
+  the request. The server binds untrusted input directly onto the model.
+detection_criteria: |
+  Flag broad field exposure on request-bound forms/serializers:
+  - class Meta: fields = "__all__" on a ModelForm or ModelSerializer
+  - Meta.exclude used to blacklist instead of an explicit fields allowlist
+  - Model(**request.POST.dict()) or serializer.save() over unfiltered input
+    that can reach privileged fields
+  Safe: enumerate exactly the client-editable fields in Meta.fields, and set
+  ownership/permission fields server-side.
+example_vulnerable: |
+  class ProfileForm(forms.ModelForm):
+      class Meta:
+          model = User
+          fields = "__all__"
+example_secure: |
+  class ProfileForm(forms.ModelForm):
+      class Meta:
+          model = User
+          fields = ["display_name", "bio", "avatar"]
+references:
+  - url: https://cwe.mitre.org/data/definitions/915.html
+    title: CWE-915 Improperly Controlled Modification of Object Attributes
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

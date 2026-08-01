@@ -1,0 +1,40 @@
+id: cwe-306-missing-authentication-express
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-306
+title: Missing Authentication on Sensitive Express Route
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - express
+description: |
+  Routes that read, modify, or delete data, or expose admin/internal
+  functionality, must require authentication. A handler that performs a
+  sensitive action with no auth middleware and no inline identity check lets
+  any anonymous caller invoke it.
+detection_criteria: |
+  Flag sensitive handlers with no authentication:
+  - app.post/put/delete on data-modifying or admin routes lacking an auth
+    middleware (requireAuth, passport.authenticate, a session/JWT check)
+  - /admin, /internal, /users, /orders routes registered without auth
+  - a route that reads req.user but never verifies it was set
+  Distinguish from intentionally public routes (health checks, login, public
+  content). The risk is a state-changing or data-exposing action reachable
+  unauthenticated.
+example_vulnerable: |
+  app.delete('/api/users/:id', async (req, res) => {
+    await db.users.destroy(req.params.id);
+    res.sendStatus(204);
+  });
+example_secure: |
+  app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
+    await db.users.destroy(req.params.id);
+    res.sendStatus(204);
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/306.html
+    title: CWE-306 Missing Authentication for Critical Function
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

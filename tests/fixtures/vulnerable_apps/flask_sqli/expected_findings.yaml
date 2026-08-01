@@ -1,0 +1,31 @@
+# Frozen BEFORE corpus tuning (M8 discipline — do not edit to make tests pass).
+# Line ranges are inclusive and matched by overlap, not exact equality.
+#
+# Note: the Jinja `|safe` XSS lives in templates/greeting.html, which v1 does
+# not walk (py/js/ts only) — it is intentionally NOT an expected finding.
+# rule_ids lists the semantically-correct rules for each location; the corpus
+# has several valid SQLi variants, so a finding matches if it cites ANY of them
+# at the expected location (this hardens the matcher, it does not lower the bar
+# — the vulnerability must still be found at the right place under a correct rule).
+expected:
+  - file: app.py
+    rule_ids: [cwe-798-hardcoded-secrets-python]
+    min_severity: high
+    line_start: 12
+    line_end: 13
+  - file: app.py
+    rule_ids:
+      - owasp-a03-sql-injection-python-string-format
+      - cwe-89-sql-injection-django-raw
+    min_severity: high
+    line_start: 25
+    line_end: 27
+  - file: app.py
+    rule_ids:
+      - owasp-a03-sql-injection-python-string-format
+      - cwe-89-sql-injection-django-raw
+    min_severity: high
+    line_start: 36
+    line_end: 40
+clean_files:
+  - utils.py

@@ -1,0 +1,11 @@
+id: broken-rule-missing-fields
+taxonomy:
+  - owasp: A03:2021
+title: Too short
+severity: apocalyptic
+languages:
+  - cobol
+description: short
+detection_criteria: short
+example_vulnerable: x
+example_secure: y

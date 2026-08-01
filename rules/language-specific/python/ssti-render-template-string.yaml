@@ -1,0 +1,37 @@
+id: cwe-94-ssti-flask-render-template-string
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-94
+title: Server-Side Template Injection via render_template_string
+severity: critical
+languages:
+  - python
+frameworks:
+  - flask
+description: |
+  Compiling user input as a Jinja template (rather than passing it as data)
+  lets an attacker use template syntax to read globals and reach Python
+  builtins, typically escalating to remote code execution
+  ({{ ''.__class__.__mro__[1].__subclasses__() }} gadget chains).
+detection_criteria: |
+  Flag user input compiled as a template:
+  - render_template_string(f"...{user_input}...") or with user data
+    concatenated into the template source
+  - Template(user_string).render(...) built from request data
+  - flask.render_template_string(request.args["x"])
+  Safe: keep the template a fixed string and pass user data as render
+  context variables — render_template_string("Hello {{ name }}", name=x).
+example_vulnerable: |
+  @app.route("/hello")
+  def hello():
+      name = request.args["name"]
+      return render_template_string("<h1>Hi " + name + "</h1>")
+example_secure: |
+  @app.route("/hello")
+  def hello():
+      return render_template_string("<h1>Hi {{ name }}</h1>", name=request.args["name"])
+references:
+  - url: https://cwe.mitre.org/data/definitions/94.html
+    title: CWE-94 Code Injection
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

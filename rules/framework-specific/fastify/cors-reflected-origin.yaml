@@ -1,0 +1,51 @@
+id: cwe-942-cors-shared-domain-suffix-fastify
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-942
+title: CORS Allowlist Matching a Shared Hosting Domain Suffix
+severity: medium
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - fastify
+description: |
+  An origin allowlist that matches a domain suffix trusts every subdomain of
+  that domain. When the domain belongs to a shared hosting provider that hands
+  subdomains to any customer, such as railway.app, herokuapp.com, vercel.app,
+  onrender.com, netlify.app, or pages.dev, anyone who signs up for the provider
+  gets an origin the application trusts. The check looks like an allowlist and
+  behaves close to a wildcard.
+detection_criteria: |
+  Flag origin checks that accept a suffix of a shared hosting domain:
+  - a regular expression anchored on a provider domain, for example
+    /\.herokuapp\.com$/, tested against the request Origin header
+  - endsWith or includes against a provider domain, then reflecting the
+    request origin into Access-Control-Allow-Origin
+  - an @fastify/cors `origin` callback that returns true for a suffix match
+  - a hook or plugin option that treats a missing Origin header as allowed
+  Severity rises to high when Access-Control-Allow-Credentials is also set,
+  because the attacker origin can then make authenticated cross-origin
+  requests. Without credentials the exposure is limited to what an anonymous
+  request can read, so report it at medium and say so.
+  Safe: an explicit list of full origins, or a suffix match on a domain the
+  application itself controls entirely.
+example_vulnerable: |
+  await fastify.register(require('@fastify/cors'), {
+    origin: (origin, cb) => cb(null, !origin || origin.endsWith('.herokuapp.com')),
+    credentials: true,
+  });
+example_secure: |
+  const ALLOWED_ORIGINS = new Set([
+    'https://app.example.com',
+    'https://admin.example.com',
+  ]);
+  await fastify.register(require('@fastify/cors'), {
+    origin: (origin, cb) => cb(null, ALLOWED_ORIGINS.has(origin)),
+    credentials: true,
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/942.html
+    title: CWE-942 Permissive Cross-domain Policy with Untrusted Domains
+  - url: https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+    title: OWASP Top 10 A05 Security Misconfiguration

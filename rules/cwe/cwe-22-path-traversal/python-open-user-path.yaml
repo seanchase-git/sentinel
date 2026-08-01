@@ -1,0 +1,40 @@
+id: cwe-22-path-traversal-python-open
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-22
+title: Path Traversal via User-Controlled File Paths
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Joining or interpolating user input into filesystem paths lets an attacker
+  use ../ sequences or absolute paths to read or write files outside the
+  intended directory — configuration files, credentials, or application
+  source. os.path.join silently discards preceding components when a later
+  component is absolute, making it a common trap.
+detection_criteria: |
+  Flag filesystem operations whose path derives from request data:
+  - open(os.path.join(BASE_DIR, request.args["name"]))
+  - open(f"{upload_dir}/{filename}") with request-derived filename
+  - send_file(base + user_path), shutil operations on user paths
+  Safe pattern: resolve the candidate with Path.resolve() and verify it is
+  relative to the intended base directory before use, or map identifiers to
+  server-chosen filenames.
+example_vulnerable: |
+  @app.route("/download")
+  def download():
+      name = request.args["file"]
+      return open(os.path.join(UPLOAD_DIR, name)).read()
+example_secure: |
+  @app.route("/download")
+  def download():
+      candidate = (Path(UPLOAD_DIR) / request.args["file"]).resolve()
+      if not candidate.is_relative_to(Path(UPLOAD_DIR).resolve()):
+          abort(400)
+      return candidate.read_text()
+references:
+  - url: https://cwe.mitre.org/data/definitions/22.html
+    title: CWE-22 Path Traversal
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

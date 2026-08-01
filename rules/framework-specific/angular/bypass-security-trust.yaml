@@ -1,0 +1,55 @@
+id: cwe-79-xss-angular-bypass-security-trust
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: Angular DomSanitizer Bypass on User-Controlled Value
+severity: high
+languages:
+  - typescript
+frameworks:
+  - angular
+description: |
+  Angular escapes interpolated values by default, so XSS in an Angular
+  application almost always requires the developer to switch the sanitizer off.
+  The bypassSecurityTrust family does exactly that: it marks a string as
+  trusted and Angular stops sanitizing it. Applied to a value that originated
+  from user input, an API response, or a route parameter, it reintroduces the
+  cross-site scripting Angular was preventing.
+detection_criteria: |
+  Flag a sanitizer bypass reached by a value the application does not control:
+  - bypassSecurityTrustHtml, bypassSecurityTrustScript, bypassSecurityTrustUrl,
+    bypassSecurityTrustResourceUrl, or bypassSecurityTrustStyle called on a
+    variable rather than a string literal defined in the same file
+  - the argument traces to an HTTP response, a form control value, a route or
+    query parameter, localStorage, or postMessage data
+  - [innerHTML] bound to a component property that is assigned from any of
+    those sources without sanitization
+  Safe: a bypass applied to a literal constant, or to a value the component
+  built entirely from values it controls. The risk is script execution in the
+  victim's session, so a bypass on a value with no untrusted origin is not a
+  finding.
+example_vulnerable: |
+  export class ProfileComponent {
+    bio!: SafeHtml;
+    constructor(private http: HttpClient, private sanitizer: DomSanitizer) {}
+    load(id: string) {
+      this.http.get<{ bio: string }>(`/api/users/${id}`).subscribe((u) => {
+        this.bio = this.sanitizer.bypassSecurityTrustHtml(u.bio);
+      });
+    }
+  }
+example_secure: |
+  export class ProfileComponent {
+    bio = '';
+    constructor(private http: HttpClient) {}
+    load(id: string) {
+      this.http.get<{ bio: string }>(`/api/users/${id}`).subscribe((u) => {
+        this.bio = u.bio; // interpolated with {{ bio }}, Angular escapes it
+      });
+    }
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Improper Neutralization of Input During Web Page Generation
+  - url: https://angular.dev/best-practices/security
+    title: Angular Security Guide

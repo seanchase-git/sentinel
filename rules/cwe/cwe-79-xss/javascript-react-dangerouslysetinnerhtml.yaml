@@ -1,0 +1,38 @@
+id: cwe-79-xss-react-dangerouslysetinnerhtml
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: XSS via React dangerouslySetInnerHTML with User Data
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - react
+  - nextjs
+description: |
+  React escapes text by default, but dangerouslySetInnerHTML bypasses that
+  protection and injects raw HTML into the DOM. Passing user-controlled data
+  (props, fetched content, query params) to it renders attacker markup and
+  runs injected event handlers in the victim's session.
+detection_criteria: |
+  Flag dangerouslySetInnerHTML whose __html value derives from user input:
+  - dangerouslySetInnerHTML={{ __html: props.userBio }}
+  - __html built from fetch/API responses, router query, or form state
+  Safe when the HTML is sanitized (e.g. DOMPurify.sanitize(...)) or the
+  value is a trusted constant. Rendering user text as {value} (escaped) is
+  the correct default.
+example_vulnerable: |
+  function Bio({ text }) {
+    return <div dangerouslySetInnerHTML={{ __html: text }} />;
+  }
+example_secure: |
+  import DOMPurify from 'dompurify';
+  function Bio({ text }) {
+    return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }} />;
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-site Scripting
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

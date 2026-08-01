@@ -1,0 +1,36 @@
+id: cwe-611-xxe-python-lxml
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-611
+title: XML External Entity (XXE) Injection in Python XML Parsing
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  XML parsers that resolve external entities let an attacker read local files
+  (file:///etc/passwd), reach internal network services (SSRF), or trigger
+  entity-expansion denial of service by defining DOCTYPE entities in
+  attacker-supplied XML.
+detection_criteria: |
+  Flag XML parsing of untrusted input with entity resolution enabled:
+  - lxml.etree.parse/fromstring using a parser with resolve_entities=True
+    (the default) or no_network=False on request data
+  - xml.dom.minidom / xml.sax parsing untrusted XML without disabling
+    external entities
+  Safe: use defusedxml, or configure lxml with
+  etree.XMLParser(resolve_entities=False, no_network=True) for untrusted XML.
+example_vulnerable: |
+  from lxml import etree
+  def parse_upload(request):
+      return etree.fromstring(request.data)
+example_secure: |
+  from lxml import etree
+  _SAFE = etree.XMLParser(resolve_entities=False, no_network=True)
+  def parse_upload(request):
+      return etree.fromstring(request.data, parser=_SAFE)
+references:
+  - url: https://cwe.mitre.org/data/definitions/611.html
+    title: CWE-611 Improper Restriction of XML External Entity Reference
+  - url: https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+    title: OWASP Top 10 A05 Security Misconfiguration

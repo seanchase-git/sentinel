@@ -1,0 +1,35 @@
+id: cwe-617-assert-for-authorization-python
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-862
+title: Authorization Enforced with assert (Stripped Under -O)
+severity: medium
+languages:
+  - python
+frameworks: []
+description: |
+  Python's assert statements are removed when the interpreter runs with -O
+  (optimized) mode, which is common in production. Using assert to enforce
+  authentication, authorization, or input validation means the check silently
+  vanishes in optimized deployments, leaving the protected action open.
+detection_criteria: |
+  Flag security decisions expressed as assertions:
+  - assert user.is_authenticated / assert request.user.is_admin
+  - assert has_permission(...), assert token_is_valid(...)
+  - assert used to validate untrusted input before a sensitive action
+  Safe: use an explicit if-check that raises/returns (e.g. raise
+  PermissionError / return 403) so the enforcement survives -O.
+example_vulnerable: |
+  def delete_account(user, target):
+      assert user.is_admin, "forbidden"
+      target.delete()
+example_secure: |
+  def delete_account(user, target):
+      if not user.is_admin:
+          raise PermissionError("forbidden")
+      target.delete()
+references:
+  - url: https://cwe.mitre.org/data/definitions/862.html
+    title: CWE-862 Missing Authorization
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

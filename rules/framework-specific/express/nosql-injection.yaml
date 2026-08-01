@@ -1,0 +1,40 @@
+id: cwe-943-nosql-injection-express-mongo
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-943
+title: NoSQL Injection via Unsanitized Query Object
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - express
+description: |
+  Passing req.body or req.query objects straight into a MongoDB query lets
+  an attacker supply operator objects like {"$ne": null} or {"$gt": ""} to
+  bypass authentication or match unintended documents. JSON request bodies
+  can carry nested objects, so a "password" field can arrive as a query
+  operator rather than a string.
+detection_criteria: |
+  Flag Mongo queries built from unsanitized request objects:
+  - User.findOne({ username: req.body.username, password: req.body.password })
+    where the values are not coerced to strings
+  - collection.find(req.query) or a filter spread from user input
+  - $where with user-controlled JavaScript
+  Safe: validate/coerce inputs to expected primitive types (e.g. String(...)),
+  use a schema validator, or a sanitizer like express-mongo-sanitize.
+example_vulnerable: |
+  const user = await User.findOne({
+    username: req.body.username,
+    password: req.body.password,
+  });
+example_secure: |
+  const user = await User.findOne({ username: String(req.body.username) });
+  if (!user || !(await bcrypt.compare(String(req.body.password), user.hash))) {
+    return res.sendStatus(401);
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/943.html
+    title: CWE-943 Improper Neutralization in a Data Query
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

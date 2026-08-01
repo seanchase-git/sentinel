@@ -1,0 +1,37 @@
+id: owasp-a03-eval-user-input-javascript
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-95
+title: Code Injection via eval() on User Input
+severity: critical
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Passing user-controlled data to eval(), new Function(), setTimeout/setInterval
+  with string arguments, or vm.runInContext executes attacker-supplied code with
+  the full privileges of the application process. In a Node.js server this is
+  remote code execution; in the browser it enables DOM-based attacks and data
+  exfiltration.
+detection_criteria: |
+  Flag any call where user-influenced data reaches a dynamic code sink:
+  - eval(req.query.x), eval(userInput), eval(`...${input}...`)
+  - new Function(body) where body derives from request data
+  - setTimeout(string, ...) or setInterval(string, ...) with non-literal strings
+  - vm.runInNewContext / vm.runInThisContext with request-derived source
+example_vulnerable: |
+  app.get('/calc', (req, res) => {
+    res.send(String(eval(req.query.expr)));
+  });
+example_secure: |
+  app.get('/calc', (req, res) => {
+    const value = Number.parseFloat(req.query.expr);
+    if (Number.isNaN(value)) return res.status(400).send('invalid');
+    res.send(String(value));
+  });
+references:
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection
+  - url: https://cwe.mitre.org/data/definitions/95.html
+    title: CWE-95 Eval Injection

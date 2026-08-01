@@ -1,0 +1,20 @@
+# Frozen BEFORE corpus tuning (M8 discipline — do not edit to make tests pass).
+# Line ranges are inclusive and matched by overlap, not exact equality.
+expected:
+  - file: server.js
+    rule_ids: [owasp-a01-idor-express-javascript]
+    min_severity: high
+    line_start: 12
+    line_end: 17
+  - file: server.js
+    rule_ids: [owasp-a03-eval-user-input-javascript]
+    min_severity: critical
+    line_start: 19
+    line_end: 22
+  - file: server.js
+    rule_ids: [owasp-a03-command-injection-javascript-exec]
+    min_severity: critical
+    line_start: 24
+    line_end: 31
+clean_files:
+  - db.js

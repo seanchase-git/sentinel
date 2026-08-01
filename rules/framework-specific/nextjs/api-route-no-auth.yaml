@@ -1,0 +1,42 @@
+id: cwe-306-missing-authentication-nextjs-api
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-306
+title: Missing Authentication on Next.js API Route
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks:
+  - nextjs
+description: |
+  Next.js API routes and route handlers run server-side and are publicly
+  reachable by default. A handler that reads or mutates data without checking
+  the session/token lets any anonymous caller invoke it, exposing or changing
+  data that should be protected.
+detection_criteria: |
+  Flag API handlers performing sensitive work with no auth check:
+  - export default function handler(req, res) / GET/POST route handlers that
+    query or mutate data without getServerSession / getToken / an auth guard
+  - admin or user-data endpoints under pages/api or app/api with no identity
+    verification
+  - trusting a userId taken from the request body/query instead of the session
+  Distinguish intentionally public routes (health, public content, auth
+  callbacks). The risk is unauthenticated access to protected data or actions.
+example_vulnerable: |
+  export default async function handler(req, res) {
+    const orders = await db.orders.findMany({ where: { userId: req.query.userId } });
+    res.json(orders);
+  }
+example_secure: |
+  export default async function handler(req, res) {
+    const session = await getServerSession(req, res, authOptions);
+    if (!session) return res.status(401).end();
+    const orders = await db.orders.findMany({ where: { userId: session.user.id } });
+    res.json(orders);
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/306.html
+    title: CWE-306 Missing Authentication for Critical Function
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

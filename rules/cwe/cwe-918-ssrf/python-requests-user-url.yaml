@@ -1,0 +1,41 @@
+id: cwe-918-ssrf-python-requests
+taxonomy:
+  - owasp: A10:2021
+  - cwe: CWE-918
+title: Server-Side Request Forgery via User-Supplied URLs
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Fetching a URL taken from user input lets an attacker make the server
+  request internal targets: cloud metadata endpoints (169.254.169.254),
+  localhost admin interfaces, or private-network services. The server's
+  network position and credentials are abused even when the response is
+  not returned to the attacker (blind SSRF).
+detection_criteria: |
+  Flag outbound HTTP calls whose URL derives from request data:
+  - requests.get(request.args["url"]), httpx/aiohttp/urllib with user URLs
+  - URL "preview", "webhook test", "import from URL" features without
+    validation
+  Mitigations to look for: allowlist of hosts/schemes, resolving and
+  rejecting private/link-local addresses, and disabling redirects that
+  could re-target the request.
+example_vulnerable: |
+  @app.route("/preview")
+  def preview():
+      url = request.args["url"]
+      return requests.get(url).text
+example_secure: |
+  @app.route("/preview")
+  def preview():
+      url = request.args["url"]
+      host = urlparse(url).hostname or ""
+      if urlparse(url).scheme != "https" or host not in ALLOWED_HOSTS:
+          abort(400)
+      return requests.get(url, allow_redirects=False, timeout=5).text
+references:
+  - url: https://cwe.mitre.org/data/definitions/918.html
+    title: CWE-918 Server-Side Request Forgery
+  - url: https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
+    title: OWASP Top 10 A10 SSRF

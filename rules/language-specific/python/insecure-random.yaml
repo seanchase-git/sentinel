@@ -1,0 +1,34 @@
+id: cwe-330-insecure-random-python
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-330
+title: Insecure Randomness for Security-Sensitive Values
+severity: medium
+languages:
+  - python
+frameworks: []
+description: |
+  The random module is a Mersenne Twister PRNG: fast, but predictable —
+  its state can be recovered from a modest number of outputs. Using it to
+  generate session tokens, password-reset codes, API keys, OTPs, or salts
+  lets an attacker predict future values and hijack the protected flow.
+detection_criteria: |
+  Flag security-sensitive values produced by the random module:
+  - random.random(), random.randint, random.choice(s), random.getrandbits
+    feeding tokens, codes, tempfile names used for auth artifacts, or salts
+  - uuid.uuid1/uuid3/uuid5 used as unguessable identifiers
+  Safe pattern: the secrets module (secrets.token_urlsafe, token_hex,
+  secrets.choice) or os.urandom for security-sensitive randomness.
+  Non-security uses of random (sampling, jitter, shuffling test data) are
+  not findings.
+example_vulnerable: |
+  def make_reset_code():
+      return "".join(random.choice(string.digits) for _ in range(6))
+example_secure: |
+  def make_reset_code():
+      return "".join(secrets.choice(string.digits) for _ in range(6))
+references:
+  - url: https://cwe.mitre.org/data/definitions/330.html
+    title: CWE-330 Use of Insufficiently Random Values
+  - url: https://docs.python.org/3/library/secrets.html
+    title: Python secrets module

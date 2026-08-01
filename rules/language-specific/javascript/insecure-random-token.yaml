@@ -1,0 +1,36 @@
+id: cwe-338-insecure-random-javascript
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-338
+title: Math.random() Used for Security-Sensitive Values
+severity: medium
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Math.random() is a non-cryptographic PRNG whose output is predictable and,
+  in V8, partially recoverable from observed values. Using it to generate
+  session ids, password-reset tokens, API keys, OTPs, or nonces lets an
+  attacker predict them and hijack the protected flow.
+detection_criteria: |
+  Flag Math.random() feeding security-sensitive values:
+  - token/id/otp/nonce/secret built from Math.random()
+  - Math.random().toString(36) used as an identifier for auth artifacts
+  Safe: crypto.randomBytes / crypto.randomUUID (Node) or
+  crypto.getRandomValues (browser). Non-security uses (jitter, sampling,
+  animation) are not findings.
+example_vulnerable: |
+  function resetToken() {
+    return Math.random().toString(36).slice(2);
+  }
+example_secure: |
+  const crypto = require('crypto');
+  function resetToken() {
+    return crypto.randomBytes(32).toString('hex');
+  }
+references:
+  - url: https://cwe.mitre.org/data/definitions/338.html
+    title: CWE-338 Use of Cryptographically Weak PRNG
+  - url: https://owasp.org/Top10/A02_2021-Cryptographic_Failures/
+    title: OWASP Top 10 A02 Cryptographic Failures

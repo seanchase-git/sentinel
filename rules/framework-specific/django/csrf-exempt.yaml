@@ -1,0 +1,37 @@
+id: cwe-352-csrf-exempt-django
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-352
+title: CSRF Protection Disabled on State-Changing Django View
+severity: high
+languages:
+  - python
+frameworks:
+  - django
+description: |
+  Django enables CSRF protection by default. Applying @csrf_exempt (or
+  removing CsrfViewMiddleware) to a view that changes state lets an attacker's
+  site submit forged authenticated requests on a victim's behalf, performing
+  actions the victim never intended.
+detection_criteria: |
+  Flag CSRF protection removed from state-changing views:
+  - @csrf_exempt on a POST/PUT/DELETE view that mutates data
+  - method_decorator(csrf_exempt) on a class-based view
+  - ensure_csrf_cookie/csrf_protect intentionally omitted where cookies drive
+    authentication
+  A genuinely stateless, token-authenticated API endpoint may legitimately be
+  exempt; the risk is a cookie-authenticated mutating view without CSRF checks.
+example_vulnerable: |
+  @csrf_exempt
+  def transfer(request):
+      move_funds(request.user, request.POST["to"], request.POST["amount"])
+      return JsonResponse({"ok": True})
+example_secure: |
+  def transfer(request):
+      move_funds(request.user, request.POST["to"], request.POST["amount"])
+      return JsonResponse({"ok": True})
+references:
+  - url: https://cwe.mitre.org/data/definitions/352.html
+    title: CWE-352 Cross-Site Request Forgery
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

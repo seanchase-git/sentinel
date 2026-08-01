@@ -1,0 +1,38 @@
+id: cwe-73-file-write-user-path-python
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-73
+title: Arbitrary File Write via User-Controlled Output Path
+severity: high
+languages:
+  - python
+frameworks: []
+description: |
+  Writing to a filesystem path built from user input lets an attacker use ../
+  or absolute paths to create or overwrite files outside the intended
+  directory — dropping a web shell, overwriting config, or clobbering
+  application code. File uploads that trust the client-supplied filename are
+  the classic case.
+detection_criteria: |
+  Flag write operations whose destination path derives from user input:
+  - open(os.path.join(UPLOAD_DIR, request.files["f"].filename), "wb")
+  - open(f"{base}/{user_name}", "w") / Path(base, user_value).write_bytes(...)
+  - shutil.copy/move to a user-controlled destination
+  Safe: generate a server-side filename, or validate the resolved path stays
+  within the base directory (Path.resolve() + is_relative_to check); sanitize
+  upload filenames with werkzeug.utils.secure_filename.
+example_vulnerable: |
+  @app.route("/upload", methods=["POST"])
+  def upload():
+      f = request.files["file"]
+      f.save(os.path.join(UPLOAD_DIR, f.filename))
+example_secure: |
+  @app.route("/upload", methods=["POST"])
+  def upload():
+      f = request.files["file"]
+      f.save(os.path.join(UPLOAD_DIR, secure_filename(f.filename)))
+references:
+  - url: https://cwe.mitre.org/data/definitions/73.html
+    title: CWE-73 External Control of File Name or Path
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

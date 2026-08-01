@@ -1,0 +1,38 @@
+id: cwe-306-missing-authentication-fastapi
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-306
+title: Missing Authentication Dependency on FastAPI Route
+severity: high
+languages:
+  - python
+frameworks:
+  - fastapi
+description: |
+  FastAPI enforces authentication through dependencies (Depends). A path
+  operation that reads or mutates sensitive data without an auth dependency —
+  and without an inline identity/permission check — is reachable by any
+  anonymous caller.
+detection_criteria: |
+  Flag sensitive path operations lacking an auth dependency:
+  - @app.post/put/delete or data-returning @app.get with no Depends(get_
+    current_user) (or equivalent) in the signature or router
+  - admin/internal/user/order endpoints without a security dependency
+  - a handler that uses a user object it never actually resolves/authorizes
+  Distinguish intentionally public endpoints (health, login, public content).
+  The risk is a state-changing or data-exposing operation with no auth.
+example_vulnerable: |
+  @app.delete("/users/{user_id}")
+  async def delete_user(user_id: int):
+      await db.delete_user(user_id)
+      return {"deleted": user_id}
+example_secure: |
+  @app.delete("/users/{user_id}")
+  async def delete_user(user_id: int, admin: User = Depends(require_admin)):
+      await db.delete_user(user_id)
+      return {"deleted": user_id}
+references:
+  - url: https://cwe.mitre.org/data/definitions/306.html
+    title: CWE-306 Missing Authentication for Critical Function
+  - url: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+    title: OWASP Top 10 A01 Broken Access Control

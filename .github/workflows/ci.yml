@@ -1,0 +1,33 @@
+name: CI
+
+# Unit tests and lint need no models, no Postgres, and no proxy, so the whole
+# gate runs on a stock runner. Integration tests are excluded here on purpose:
+# they require ~74.5 GB of local weights and would skip themselves into a
+# meaningless green anywhere else.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check src tests evals
+
+      - name: Unit tests
+        run: uv run pytest -m "not integration" -q
+
+      - name: Validate the rule corpus
+        run: uv run sentinel rules validate

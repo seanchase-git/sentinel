@@ -1,0 +1,35 @@
+id: cwe-89-sql-injection-javascript-concat
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-89
+title: SQL Injection via String Concatenation in Node.js
+severity: high
+languages:
+  - javascript
+  - typescript
+frameworks: []
+description: |
+  Building SQL with template literals or + concatenation and request data
+  lets an attacker inject arbitrary SQL, even when a driver like mysql, pg,
+  or sqlite3 is used. The flaw is at string construction, before the driver
+  sees the query, so the driver's escaping never applies.
+detection_criteria: |
+  Flag queries assembled from user input:
+  - db.query(`SELECT * FROM users WHERE id = ${req.params.id}`)
+  - connection.query('SELECT ... ' + req.body.name)
+  - knex.raw with interpolated user values
+  Safe pattern: parameterized queries — db.query('SELECT ... WHERE id = ?',
+  [id]) or pg's $1 placeholders — where user values are bound, not spliced.
+example_vulnerable: |
+  app.get('/u', (req, res) => {
+    db.query(`SELECT * FROM users WHERE id = ${req.query.id}`, cb);
+  });
+example_secure: |
+  app.get('/u', (req, res) => {
+    db.query('SELECT * FROM users WHERE id = ?', [req.query.id], cb);
+  });
+references:
+  - url: https://cwe.mitre.org/data/definitions/89.html
+    title: CWE-89 SQL Injection
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

@@ -1,0 +1,63 @@
+# Sentinel LiteLLM gateway (port 8100).
+# All aliases resolve to local llama-server backends — no cloud APIs, ever.
+# Plan deviation D2: exact-match Redis cache (NOT semantic) and no LiteLLM
+# Postgres DB. Semantic caching is unsafe for a security reviewer: two files
+# differing only in the vulnerable line must never share a cached review.
+
+model_list:
+  - model_name: deep-review
+    litellm_params:
+      model: openai/deep-review
+      api_base: http://127.0.0.1:8090/v1
+      api_key: none
+
+  - model_name: input-guard
+    litellm_params:
+      model: openai/input-guard
+      api_base: http://127.0.0.1:8091/v1
+      api_key: none
+
+  - model_name: triage
+    litellm_params:
+      model: openai/triage
+      api_base: http://127.0.0.1:8092/v1
+      api_key: none
+
+  - model_name: judge
+    litellm_params:
+      model: openai/judge
+      api_base: http://127.0.0.1:8093/v1
+      api_key: none
+
+  - model_name: classify
+    litellm_params:
+      model: openai/classify
+      api_base: http://127.0.0.1:8094/v1
+      api_key: none
+
+  - model_name: nomic-embed
+    litellm_params:
+      model: openai/nomic-embed
+      api_base: http://127.0.0.1:8095/v1
+      api_key: none
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    host: 127.0.0.1
+    port: 6390
+    ttl: 3600
+    # "aembedding" is deliberately excluded. LiteLLM mis-assembles response
+    # indices when a BATCH embedding request is only PARTIALLY cached: a 5-input
+    # batch with 3 cached returns indices [0,0,1,1,2] instead of [0,1,2,3,4].
+    # That is the normal case for a re-review (some chunks unchanged, some new),
+    # and it would pair the wrong vector with the wrong chunk — the shape check
+    # in gateway._embed turns it into a hard file error instead. Embedding calls
+    # are ~80ms and were already showing a 0% hit rate, so the cache bought
+    # nothing here; completions (deep-review, judge) still cache.
+    supported_call_types: ["acompletion", "atext_completion"]
+  telemetry: false
+
+general_settings:
+  master_key: sk-sentinel-local-dev

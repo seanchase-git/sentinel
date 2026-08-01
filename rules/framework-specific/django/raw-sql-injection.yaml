@@ -1,0 +1,34 @@
+id: cwe-89-sql-injection-django-raw
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-89
+title: SQL Injection via Django raw() or extra() String Formatting
+severity: high
+languages:
+  - python
+frameworks:
+  - django
+description: |
+  Django's ORM parameterizes queries, but .raw(), .extra(), and cursor
+  .execute() run the SQL you give them. Building that SQL with f-strings, %,
+  or .format() and user input reintroduces SQL injection despite the ORM.
+detection_criteria: |
+  Flag raw SQL assembled from user input:
+  - Model.objects.raw(f"SELECT ... {user_value}")
+  - .extra(where=["name = '%s'" % value]) with user data
+  - connection.cursor().execute("... " + request.GET[...])
+  Safe: pass parameters separately — raw("SELECT ... WHERE id = %s", [id]) or
+  cursor.execute(sql, params) — so Django binds them.
+example_vulnerable: |
+  def search(request):
+      term = request.GET["q"]
+      return User.objects.raw(f"SELECT * FROM users WHERE name = '{term}'")
+example_secure: |
+  def search(request):
+      term = request.GET["q"]
+      return User.objects.raw("SELECT * FROM users WHERE name = %s", [term])
+references:
+  - url: https://cwe.mitre.org/data/definitions/89.html
+    title: CWE-89 SQL Injection
+  - url: https://owasp.org/Top10/A03_2021-Injection/
+    title: OWASP Top 10 A03 Injection

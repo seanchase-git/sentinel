@@ -1,0 +1,98 @@
+{
+  "wall_seconds": 465.84,
+  "node_latency": {
+    "guardrail": {
+      "count": 2,
+      "min_ms": 689.7,
+      "p50_ms": 756.2,
+      "p95_ms": 822.7,
+      "max_ms": 822.7
+    },
+    "classify": {
+      "count": 2,
+      "min_ms": 469.7,
+      "p50_ms": 473.0,
+      "p95_ms": 476.3,
+      "max_ms": 476.3
+    },
+    "retrieve": {
+      "count": 2,
+      "min_ms": 103.3,
+      "p50_ms": 105.4,
+      "p95_ms": 107.6,
+      "max_ms": 107.6
+    },
+    "triage": {
+      "count": 2,
+      "min_ms": 1700.4,
+      "p50_ms": 1727.5,
+      "p95_ms": 1754.6,
+      "max_ms": 1754.6
+    },
+    "deep_review": {
+      "count": 2,
+      "min_ms": 21393.0,
+      "p50_ms": 52558.1,
+      "p95_ms": 83723.3,
+      "max_ms": 83723.3
+    },
+    "validate": {
+      "count": 1,
+      "min_ms": 0.1,
+      "p50_ms": 0.1,
+      "p95_ms": 0.1,
+      "max_ms": 0.1
+    },
+    "judge": {
+      "count": 1,
+      "min_ms": 378991.2,
+      "p50_ms": 378991.2,
+      "p95_ms": 378991.2,
+      "max_ms": 378991.2
+    }
+  },
+  "model_usage": {
+    "input-guard": {
+      "calls": 2,
+      "prompt_tokens": 745,
+      "completion_tokens": 4,
+      "cache_hits": 0
+    },
+    "classify": {
+      "calls": 2,
+      "prompt_tokens": 1273,
+      "completion_tokens": 53,
+      "cache_hits": 0
+    },
+    "nomic-embed": {
+      "calls": 2,
+      "prompt_tokens": 475,
+      "completion_tokens": 0,
+      "cache_hits": 0
+    },
+    "triage": {
+      "calls": 2,
+      "prompt_tokens": 1640,
+      "completion_tokens": 103,
+      "cache_hits": 0
+    },
+    "deep-review": {
+      "calls": 5,
+      "prompt_tokens": 9612,
+      "completion_tokens": 4315,
+      "cache_hits": 0
+    },
+    "judge": {
+      "calls": 3,
+      "prompt_tokens": 2337,
+      "completion_tokens": 1119,
+      "cache_hits": 0
+    }
+  },
+  "cache_hit_rate": 0.0,
+  "counters": {
+    "files_completed": 2,
+    "validator_rejected": 0,
+    "judge_rejected": 1
+  }
+}
