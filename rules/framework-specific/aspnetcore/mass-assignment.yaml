@@ -1,0 +1,26 @@
+id: cwe-915-aspnetcore-mass-assignment
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-915
+title: ASP.NET Core Mass Assignment of Sensitive Properties
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Binding request bodies directly into domain entities or copying every input
+  property can let callers set roles, ownership, balances, or other protected state.
+detection_criteria: |
+  Flag controller/minimal-API parameters bound directly to entities with sensitive
+  writable properties, TryUpdateModelAsync without an include list, or reflection/
+  mapper updates that accept all client fields. Dedicated request DTOs are controls.
+example_vulnerable: |
+  [HttpPut("users/{id}")]
+  public IActionResult Update(int id, User user) => Save(user);
+example_secure: |
+  public IActionResult Update(int id, UpdateUserRequest request) =>
+      SaveAllowedFields(id, request.DisplayName);
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/mvc/models/model-binding
+    title: Microsoft Model Binding in ASP.NET Core
+  - url: https://cwe.mitre.org/data/definitions/915.html
+    title: CWE-915 Improperly Controlled Modification of Dynamically-Determined Object Attributes

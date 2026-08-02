@@ -171,9 +171,19 @@ def load_report(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
+def scoreable_vulnerabilities(truth: dict) -> list[dict]:
+    """Return confirmed, walker-eligible defects from either truth format."""
+    if "adjudications" not in truth:
+        return list(truth.get("vulnerabilities", []))
+    return [
+        case for case in truth.get("adjudications", [])
+        if case.get("status") == "CONFIRMED" and case.get("walker_eligible") is True
+    ]
+
+
 def score_one(truth: dict, report: dict) -> dict:
     findings = report.get("findings", [])
-    vulns = truth.get("vulnerabilities", [])
+    vulns = scoreable_vulnerabilities(truth)
 
     # One-to-one. Without it, three duplicate findings for one defect all count
     # as true positives and precision reports work the tool did not do, while a
@@ -294,7 +304,7 @@ def main() -> int:
             return 2
 
     print(f"target: {truth['target']}")
-    print(f"ground truth: {len(truth.get('vulnerabilities', []))} known vulnerabilities")
+    print(f"ground truth: {len(scoreable_vulnerabilities(truth))} known vulnerabilities")
     if not truth.get("exhaustive", False):
         print(
             "  NOTE: ground truth is not marked exhaustive. Unmatched findings are\n"

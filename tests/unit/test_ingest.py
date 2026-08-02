@@ -11,6 +11,7 @@ from sentinel.ingest.walker import IngestError, acquire, cleanup, is_git_url, wa
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FLASK_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "vulnerable_apps" / "flask_sqli"
+DOTNET_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "vulnerable_apps" / "dotnet_sample"
 
 PY_SAMPLE = '''\
 import os
@@ -62,6 +63,31 @@ class TestWalker:
     def test_walk_language_filter(self):
         files = list(walk(FLASK_FIXTURE, languages={"javascript"}))
         assert files == []
+
+    def test_dotnet_extensions_share_csharp_language_and_select_grammar(self):
+        files = list(walk(DOTNET_FIXTURE, languages={"csharp"}))
+        by_suffix = {f.path.suffix: (f.language, f.grammar) for f in files}
+        assert by_suffix[".cs"] == ("csharp", "csharp")
+        assert by_suffix[".razor"] == ("csharp", "razor")
+        assert by_suffix[".cshtml"] == ("csharp", "razor")
+        assert all(f.language == "csharp" for f in files)
+
+    def test_dotnet_bin_and_obj_are_excluded(self, tmp_path: Path):
+        # Only next to a project file: the names are scoped to real .NET build
+        # output so they do not swallow source directories in other ecosystems.
+        (tmp_path / "App.csproj").write_text("<Project />")
+        for directory in ("bin", "obj"):
+            (tmp_path / directory).mkdir()
+            (tmp_path / directory / "Generated.cs").write_text("class Generated {}")
+        (tmp_path / "App.cs").write_text("class App {}")
+        assert [f.rel_path for f in walk(tmp_path)] == ["App.cs"]
+
+    def test_node_bin_entrypoint_is_not_excluded(self, tmp_path: Path):
+        """`bin/cli.js` is the conventional npm entrypoint, not build output."""
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "bin").mkdir()
+        (tmp_path / "bin" / "cli.js").write_text("const a = 1;")
+        assert [f.rel_path for f in walk(tmp_path)] == ["bin/cli.js"]
 
     def test_ignored_dirs_skipped(self, tmp_path: Path):
         (tmp_path / "node_modules" / "lib").mkdir(parents=True)
@@ -136,6 +162,33 @@ class TestChunker:
         chunks = chunk_file(TS_SAMPLE, "typescript")
         assert chunks
         assert any("export function handler" in c.text for c in chunks)
+
+    def test_csharp_chunks_at_member_declarations_with_exact_lines(self):
+        source = (DOTNET_FIXTURE / "Controllers" / "UsersController.cs").read_text()
+        lines = source.split("\n")
+        chunks = chunk_file(source, "csharp", grammar="csharp")
+        assert any("Task<IActionResult> Search" in chunk.text for chunk in chunks)
+        assert any("Task<IActionResult> SafeSearch" in chunk.text for chunk in chunks)
+        for chunk in chunks:
+            assert chunk.text == "\n".join(lines[chunk.start_line - 1 : chunk.end_line])
+
+    @pytest.mark.parametrize("name", ["Danger.razor", "../Views/Profile.cshtml"])
+    def test_razor_chunks_preserve_exact_source_slices(self, name):
+        path = DOTNET_FIXTURE / "Pages" / name
+        source = path.read_text()
+        lines = source.split("\n")
+        chunks = chunk_file(source, "csharp", grammar="razor")
+        assert chunks
+        assert any("MarkupString" in chunk.text or "Html.Raw" in chunk.text for chunk in chunks)
+        for chunk in chunks:
+            assert chunk.text == "\n".join(lines[chunk.start_line - 1 : chunk.end_line])
+
+    def test_mixed_razor_parse_errors_retain_usable_regions(self):
+        source = "@page \"/broken\"\n<div>@value</div>\n@code {\n void Go() { Run(value); }\n"
+        chunks = chunk_file(source, "csharp", grammar="razor")
+        assert chunks
+        assert "Run(value)" in "\n".join(chunk.text for chunk in chunks)
+        assert group_windows(chunks)[0].token_estimate <= WINDOW_TOKEN_BUDGET
 
     def test_empty_source(self):
         assert chunk_file("", "python") == []

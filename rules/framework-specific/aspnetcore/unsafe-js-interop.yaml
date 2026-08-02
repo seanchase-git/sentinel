@@ -1,0 +1,24 @@
+id: cwe-79-blazor-unsafe-js-interop
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: Unsafe Blazor JavaScript Interop
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Sending untrusted script, HTML, or selector content to dangerous browser-side
+  JavaScript interop functions can turn server-trusted data into DOM XSS.
+detection_criteria: |
+  Flag untrusted values passed through IJSRuntime to eval, Function, document.write,
+  innerHTML helpers, or an application helper that executes script or assigns raw
+  HTML. Fixed interop function names with data consumed as text are safe.
+example_vulnerable: |
+  await JS.InvokeVoidAsync("eval", request.Payload);
+example_secure: |
+  await JS.InvokeVoidAsync("setTextContent", elementId, request.Payload);
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/blazor/javascript-interoperability/
+    title: Microsoft ASP.NET Core Blazor JavaScript Interoperability
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-Site Scripting

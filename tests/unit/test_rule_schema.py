@@ -49,6 +49,10 @@ class TestRuleSchema:
         with pytest.raises(RuleValidationError):
             Rule.from_yaml_dict(_valid_rule_dict(languages=["cobol"]))
 
+    def test_csharp_language_is_supported(self):
+        rule = Rule.from_yaml_dict(_valid_rule_dict(languages=["csharp"]))
+        assert rule.languages == ["csharp"]
+
     def test_unknown_taxonomy_kind_rejected(self):
         with pytest.raises(RuleValidationError):
             Rule.from_yaml_dict(_valid_rule_dict(taxonomy=[{"sans": "top25"}]))

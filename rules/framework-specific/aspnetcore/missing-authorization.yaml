@@ -1,0 +1,28 @@
+id: cwe-862-missing-authorization-aspnetcore
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-862
+title: Missing Authorization on Privileged ASP.NET Core Operation
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Authentication alone does not restrict an operation to the required role,
+  policy, tenant, or permission, allowing authenticated users to exceed authority.
+detection_criteria: |
+  Flag a privileged route or action whose visible enforcement checks identity but
+  not the required role, policy, ownership, or permission. Cite the route/action
+  declaration and explain the absent enforcement; do not infer requirements from a name alone.
+example_vulnerable: |
+  [Authorize]
+  [HttpDelete("admin/users/{id}")]
+  public IActionResult DeleteUser(int id) => Delete(id);
+example_secure: |
+  [Authorize(Roles = "Administrator")]
+  [HttpDelete("admin/users/{id}")]
+  public IActionResult DeleteUser(int id) => Delete(id);
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/authorization/roles
+    title: Microsoft Role-Based Authorization
+  - url: https://cwe.mitre.org/data/definitions/862.html
+    title: CWE-862 Missing Authorization

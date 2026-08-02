@@ -1,0 +1,577 @@
+# Ground truth for AlexGoOn/the-most-vulnerable-dotnet-app (DotnetSecurityFailures)
+#
+# Second public benchmark target, and the first .NET one. Transcribed from the
+# application's OWN documented vulnerability inventory (README.md, which lists
+# every planted defect with its CWE and a link to the page that demonstrates it)
+# BEFORE Sentinel was ever run against it. Nothing here was shaped by what
+# Sentinel happened to find, which is the property that makes recall a
+# measurement rather than a bound. Same discipline as evals/ground_truth/dvna.yaml.
+#
+# Clone: bash scripts/fetch-dotnet-benchmark.sh   (or: make benchmark-dotnet)
+# Pinned at 60d060faf08079887e71a98498fe9a9d623e8ffc.
+# 102 walker-eligible files (64 .razor, 37 .cs, 1 .js).
+#
+# HOW LOCATIONS WERE ESTABLISHED
+#   The README links each defect to its demo page under Components/Pages/*.razor,
+#   but that page is usually the teaching UI: it renders an explanation, prints a
+#   sample of the vulnerable code, and calls a controller or service that holds
+#   the real implementation. The location recorded below is the EXECUTABLE defect,
+#   not the page that talks about it.
+#
+#   Every line here was confirmed executable with the project's own
+#   graph/evidence.py:_node_is_non_executed check (tree-sitter, C# grammar for
+#   @code bodies), so no entry points at documentation. That distinction is not
+#   cosmetic: 53 of the 64 .razor files embed their own source as
+#   `private const string VulnerableCode = """..."""` teaching material, and an
+#   entry pointing at one of those would credit the reviewer for "finding" a
+#   vulnerability in a page's printed explanation of that vulnerability.
+#
+# SCORING NOTE
+#   evals/score.py matches on file + CWE class + line within LINE_TOLERANCE (40).
+#   `corpus_coverage` records the covering rule id or `none`, so raw recall and
+#   recall-over-covered can be reported separately, exactly as for DVNA. Report
+#   both; raw recall alone conflates "had a rule and missed it" with "no rule".
+
+target: ./benchmarks/the-most-vulnerable-dotnet-app
+revision: 60d060faf08079887e71a98498fe9a9d623e8ffc
+adjudicated_on: 2026-08-01
+adjudicated_by: >
+  Transcribed from README.md's documented inventory, then each defect located in
+  source and confirmed to sit in executable code rather than in a displayed
+  sample, using the repository's own executable-sink check.
+exhaustive: false
+exhaustive_note: >
+  The README documents roughly fifty defects. The entries below are those whose
+  executable implementation could be pinned to a specific line with confidence.
+  Defects that exist only as demonstration prose, that are implemented purely in
+  front-end JavaScript under wwwroot, or whose "vulnerability" is the absence of
+  a control with no single anchoring line (missing rate limiting on every
+  endpoint, negative-quantity and integer-overflow business logic) are NOT
+  transcribed, because a location the scorer cannot match would depress recall
+  for a reason unrelated to the reviewer's behaviour.
+  exhaustive stays false regardless: the scorer's definition of exhaustive is
+  that every unmatched finding is a proven false positive, which is a stronger
+  claim than "the documented inventory is complete". An unmatched finding here
+  may be a genuine defect the README never claimed.
+
+vulnerabilities:
+  # ---------------------------------------------------------------- injection
+  - id: sql-injection-string-concat
+    file: DotnetSecurityFailures/Services/VulnerableDatabaseService.cs
+    line: 77
+    also_at: [74]
+    cwe: CWE-89
+    severity: high
+    corpus_coverage: cwe-89-sql-injection-csharp
+    summary: >
+      SearchUserVulnerable interpolates the username argument into the statement
+      at line 74 ($"... WHERE Username = '{username}' ...") and assigns it to
+      command.CommandText at line 77. README "SQL Injection".
+
+  - id: command-injection-process-start
+    file: DotnetSecurityFailures/Services/VulnerableCommandService.cs
+    line: 44
+    also_at: [36, 115]
+    cwe: CWE-78
+    severity: high
+    corpus_coverage: cwe-78-command-injection-csharp
+    summary: >
+      ProcessStartInfo.Arguments is built by interpolating userInput (line 36 on
+      Windows, line 41 on POSIX) and executed by Process.Start at line 44.
+      README "Command Injection".
+
+  - id: code-injection-csharpscript
+    file: DotnetSecurityFailures/Components/Pages/CodeInjectionCSharpScript.razor
+    line: 259
+    cwe: CWE-94
+    severity: high
+    corpus_coverage: cwe-94-code-injection-csharp-script
+    summary: >
+      CSharpScript.EvaluateAsync executes a script string built from the user's
+      filter expression, with ScriptOptions importing System.Diagnostics.
+      README "Code Injection (CSharpScript)".
+    scope_note: >
+      The same call appears at line 198 inside a raw-string constant that the
+      page prints as teaching material. Line 198 is NOT a defect and a finding
+      there is a false positive; the two are 61 lines apart, so the 40-line
+      tolerance keeps them distinguishable.
+
+  - id: xpath-injection
+    file: DotnetSecurityFailures/Components/Pages/XpathInjection.razor
+    line: 213
+    cwe: CWE-643
+    severity: high
+    corpus_coverage: cwe-643-xpath-injection-csharp
+    summary: >
+      xmlDoc.SelectNodes is called with an XPath string built from unvalidated
+      user input. README "XPath Injection".
+
+  - id: xml-injection-string-concat
+    file: DotnetSecurityFailures/Services/VulnerableXMLService.cs
+    line: 14
+    also_at: [25]
+    cwe: CWE-91
+    severity: medium
+    corpus_coverage: cwe-91-xml-injection-csharp
+    summary: >
+      SaveProfileVulnerable builds the user document by interpolating fullName,
+      email and bio into an XML string literal, then parses it with
+      XmlDocument.LoadXml. README "XML Injection".
+
+  - id: json-injection-query-construction
+    file: DotnetSecurityFailures/Services/VulnerableNoSQLService.cs
+    line: 63
+    cwe: CWE-91
+    severity: high
+    corpus_coverage: none
+    summary: >
+      AuthenticateUserVulnerable concatenates username and password into a JSON
+      query string that is deserialized into a Bson filter, so JSON operators can
+      be injected. README "JSON Injection".
+
+  - id: crlf-injection-response-splitting
+    file: DotnetSecurityFailures/Controllers/VulnerableRedirectController.cs
+    line: 22
+    cwe: CWE-93
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      The url query parameter is URL-decoded (converting %0d%0a into real CRLF)
+      and written into a raw HTTP response. README "CRLF Injection".
+
+  # --------------------------------------------------------------------- xss
+  - id: stored-xss-markupstring
+    file: DotnetSecurityFailures/Components/Pages/StoredXss.razor
+    line: 36
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-79-aspnetcore-raw-rendering
+    summary: >
+      Stored comment text is rendered with @((MarkupString)comment.Text), which
+      bypasses Blazor's automatic encoding. README "Stored XSS".
+    scope_note: >
+      The identical expression at line 173 sits inside the page's own
+      `VulnerableCode` raw-string sample and is not a defect.
+
+  - id: reflected-xss-markupstring
+    file: DotnetSecurityFailures/Components/Pages/ReflectedXss.razor
+    line: 36
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-79-aspnetcore-raw-rendering
+    summary: >
+      A query-string value is rendered through MarkupString without encoding.
+      README "Reflected XSS".
+
+  - id: dom-xss-js-interop-eval
+    file: DotnetSecurityFailures/Components/Pages/DomBasedXss.razor
+    line: 251
+    also_at: [279]
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-79-blazor-unsafe-js-interop
+    summary: >
+      User input is passed to JS.InvokeVoidAsync("eval", ...) through Blazor JS
+      interop. README "XSS With JS Interop".
+
+  - id: xss-via-attributes
+    file: DotnetSecurityFailures/Components/Pages/XssAttributes.razor
+    line: 25
+    also_at: [42]
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-79-aspnetcore-raw-rendering
+    summary: >
+      User-controlled values are interpolated into HTML attribute markup and
+      rendered with MarkupString. README "XSS via Attributes".
+
+  - id: xss-via-svg
+    file: DotnetSecurityFailures/Components/Pages/XssSvg.razor
+    line: 35
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-79-aspnetcore-raw-rendering
+    summary: >
+      SVG content is rendered raw through MarkupString, allowing embedded
+      script. README "XSS via SVG".
+
+  - id: xss-via-css
+    file: DotnetSecurityFailures/Components/Pages/XssCss.razor
+    line: 35
+    cwe: CWE-79
+    severity: medium
+    corpus_coverage: cwe-79-aspnetcore-raw-rendering
+    summary: >
+      Style content is rendered raw through MarkupString. README "XSS via CSS".
+
+  - id: xss-file-upload-content-type
+    file: DotnetSecurityFailures/Controllers/VulnerableFileUploadController.cs
+    line: 74
+    cwe: CWE-79
+    severity: high
+    corpus_coverage: cwe-434-aspnetcore-unsafe-file-upload
+    summary: >
+      Uploaded files are served back with a hardcoded text/html content type, so
+      an uploaded HTML file executes in the site's origin. README "XSS via File
+      Upload".
+
+  # ------------------------------------------------- authn / authz / identity
+  - id: hardcoded-credentials
+    file: DotnetSecurityFailures/Components/Pages/HardcodedCredentials.razor
+    line: 225
+    also_at: [226, 227]
+    cwe: CWE-798
+    severity: high
+    corpus_coverage: cwe-798-hardcoded-secrets-csharp
+    summary: >
+      Admin password, API key and database password are const string literals in
+      source. README "Hardcoded Credentials".
+
+  - id: api-keys-exposure
+    file: DotnetSecurityFailures/Controllers/ApiKeysExposureController.cs
+    line: 32
+    also_at: [36, 37, 39]
+    cwe: CWE-798
+    severity: high
+    corpus_coverage: cwe-798-hardcoded-secrets-csharp
+    summary: >
+      Live-format Stripe, Google Maps, SendGrid and Twilio credentials are
+      returned to the client from source literals. README "API Keys Exposure".
+
+  - id: missing-authorization-get-all-users
+    file: DotnetSecurityFailures/Controllers/MissingAuthorizationController.cs
+    line: 24
+    also_at: [41]
+    cwe: CWE-862
+    severity: high
+    corpus_coverage: cwe-862-missing-authorization-aspnetcore
+    summary: >
+      GetAllUsers (line 24) and DeleteUser (line 39) carry no [Authorize]
+      attribute and the controller declares none, so any caller reaches them.
+      README "Missing Authorization Check".
+
+  - id: broken-jwt-no-signature-validation
+    file: DotnetSecurityFailures/Controllers/VulnerableJwtController.cs
+    line: 36
+    also_at: [24]
+    cwe: CWE-347
+    severity: high
+    corpus_coverage: cwe-347-aspnetcore-jwt-validation-bypass
+    summary: >
+      The token is split on '.' and its payload base64-decoded and trusted
+      without ever verifying the signature. README "Broken JWT Implementation".
+
+  - id: privilege-escalation-role-from-request
+    file: DotnetSecurityFailures/Controllers/PrivilegeEscalationController.cs
+    line: 48
+    cwe: CWE-269
+    severity: high
+    corpus_coverage: none
+    summary: >
+      Registration assigns Role directly from a user-supplied form field, so a
+      caller can register as Admin. README "Privilege Escalation".
+
+  - id: idor-profile-by-id
+    file: DotnetSecurityFailures/Controllers/IdorController.cs
+    line: 25
+    cwe: CWE-639
+    severity: high
+    corpus_coverage: cwe-639-idor-aspnetcore
+    summary: >
+      GetProfile returns the profile for any ?id= with no ownership check,
+      exposing SSN and credit card of other users. README "IDOR".
+
+  - id: password-reset-poisoning-host-header
+    file: DotnetSecurityFailures/Controllers/PasswordResetPoisoningController.cs
+    line: 37
+    also_at: [41]
+    cwe: CWE-640
+    severity: high
+    corpus_coverage: none
+    summary: >
+      The reset link is built from the request Host header, which an attacker
+      controls, so the token is delivered to the attacker's domain.
+      README "Password Reset Poisoning".
+
+  # ------------------------------------------------------------------ crypto
+  - id: weak-hashing-md5-sha1
+    file: DotnetSecurityFailures/Components/Pages/WeakHashing.razor
+    line: 206
+    also_at: [238]
+    cwe: CWE-327
+    severity: medium
+    corpus_coverage: cwe-327-weak-crypto-csharp
+    summary: >
+      MD5.Create (line 206) and SHA1.Create (line 238) are used to hash
+      passwords. README "Weak Hashing (MD5/SHA1)".
+
+  - id: ecb-mode-encryption
+    file: DotnetSecurityFailures/Components/Pages/EcbMode.razor
+    line: 208
+    cwe: CWE-327
+    severity: medium
+    corpus_coverage: cwe-327-weak-crypto-csharp
+    summary: >
+      aes.Mode is set to CipherMode.ECB, so identical plaintext blocks produce
+      identical ciphertext. README "ECB Mode Encryption".
+
+  - id: insufficient-key-length-des
+    file: DotnetSecurityFailures/Components/Pages/InsufficientKeyLength.razor
+    line: 249
+    also_at: [279]
+    cwe: CWE-326
+    severity: medium
+    corpus_coverage: cwe-326-insufficient-key-length-csharp
+    summary: >
+      DES.Create (line 249) and TripleDES.Create (line 279) use key lengths well
+      below current guidance. README "Insufficient Key Length".
+
+  - id: unsalted-password-hash
+    file: DotnetSecurityFailures/Components/Pages/NoSaltHashing.razor
+    line: 186
+    cwe: CWE-759
+    severity: medium
+    corpus_coverage: cwe-759-unsalted-password-hash-csharp
+    summary: >
+      Passwords are hashed with a bare SHA256 and no per-user salt, so identical
+      passwords collide and rainbow tables apply. README "No Salt in Password
+      Hashing".
+
+  - id: predictable-random
+    file: DotnetSecurityFailures/Components/Pages/WeakRandom.razor
+    line: 210
+    also_at: [231]
+    cwe: CWE-338
+    severity: medium
+    corpus_coverage: cwe-338-insecure-random-csharp
+    summary: >
+      System.Random is seeded predictably and used for security-relevant values;
+      the page then reproduces the sequence from the same seed.
+      README "Predictable Random Numbers".
+
+  # NOT TRANSCRIBED — Improper Certificate Validation (CWE-295), README
+  # "Cryptography Issues". Components/Pages/CertificateValidation.razor assigns
+  # ServerCertificateCustomValidationCallback at lines 84, 102, 119 and 132, but
+  # every one of those sits inside a raw-string constant in the page's @code
+  # block: the page teaches the vulnerability and calls a demo API, and there is
+  # no executable certificate-validation code anywhere in walker-eligible source
+  # at this revision. Verified with graph/evidence.py's executable-sink check —
+  # all four report non-executable.
+  #
+  # Recording it as a defect would be worse than omitting it: a "detection" at
+  # line 84 is a reviewer flagging documentation, and scoring it as a true
+  # positive would credit a false positive and inflate both precision and
+  # recall. The corpus rule cwe-295-certificate-validation-bypass-csharp exists
+  # and self-retrieves; this target simply does not exercise it.
+
+  # -------------------------------------------------------- sensitive data
+  - id: directory-listing-enabled
+    file: DotnetSecurityFailures/Program.cs
+    line: 173
+    also_at: [30, 187]
+    cwe: CWE-548
+    severity: low
+    corpus_coverage: none
+    summary: >
+      UseDirectoryBrowser is enabled over the uploads and logs directories, so
+      their contents are enumerable. README "Directory Listing".
+
+  - id: sensitive-data-in-urls
+    file: DotnetSecurityFailures/Controllers/DataInUrlsController.cs
+    line: 46
+    also_at: [73]
+    cwe: CWE-598
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      A password-reset URL is built with the token and account data in the query
+      string, where it lands in logs, history and Referer headers.
+      README "Sensitive Data in URLs".
+
+  - id: excessive-data-exposure
+    file: DotnetSecurityFailures/Controllers/ExcessiveDataExposureController.cs
+    line: 24
+    also_at: [81]
+    cwe: CWE-213
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      The endpoint serializes whole user objects including password hashes and
+      API keys rather than projecting the fields the client needs.
+      README "Excessive Data Exposure".
+
+  # --------------------------------------------------- xml / deserialization
+  - id: xxe-external-entities
+    file: DotnetSecurityFailures/Controllers/XxeInjectionController.cs
+    line: 58
+    also_at: [162, 163]
+    cwe: CWE-611
+    severity: high
+    corpus_coverage: cwe-611-xml-external-entities-csharp
+    summary: >
+      XmlDocument.XmlResolver is set to a new XmlUrlResolver (line 58) and a
+      second path sets DtdProcessing = Parse with a URL resolver (lines 162-163),
+      enabling external entity resolution on untrusted XML. README "XXE".
+    scope_note: >
+      The reader configured at lines 105-109 (DtdProcessing.Prohibit,
+      XmlResolver = null) is the SECURE counterpart in the same file.
+
+  - id: binaryformatter-deserialization
+    file: DotnetSecurityFailures/Components/Pages/InsecureDeserialization.razor
+    line: 239
+    also_at: [260]
+    cwe: CWE-502
+    severity: high
+    corpus_coverage: cwe-502-binaryformatter-csharp
+    summary: >
+      BinaryFormatter.Deserialize is applied to attacker-supplied bytes.
+      README "Insecure Deserialization (BinaryFormatter)".
+
+  - id: jsonnet-typenamehandling
+    file: DotnetSecurityFailures/Components/Pages/JsonDeserialization.razor
+    line: 163
+    cwe: CWE-502
+    severity: high
+    corpus_coverage: cwe-502-jsonnet-typenamehandling-csharp
+    summary: >
+      Json.NET is configured with TypeNameHandling.All, letting the payload name
+      the type to construct. README "JSON Deserialization Attacks".
+
+  - id: xml-bomb-entity-expansion
+    file: DotnetSecurityFailures/Components/Pages/XmlBomb.razor
+    line: 156
+    cwe: CWE-776
+    severity: medium
+    corpus_coverage: cwe-776-xml-entity-expansion-csharp
+    summary: >
+      XmlReaderSettings sets DtdProcessing = Parse with no expansion limit, so a
+      nested-entity document exhausts memory. README "XML Bomb (Billion
+      Laughs)".
+
+  # ------------------------------------------------------------ file / ssrf
+  - id: path-traversal-read
+    file: DotnetSecurityFailures/Controllers/PathTraversalController.cs
+    line: 45
+    also_at: [52]
+    cwe: CWE-22
+    severity: high
+    corpus_coverage: cwe-22-path-traversal-csharp
+    summary: >
+      A filename from the request is combined with the documents directory and
+      read with no canonicalisation check, so ../ escapes the root.
+      README "Path Traversal".
+
+  - id: arbitrary-file-write
+    file: DotnetSecurityFailures/Controllers/ArbitraryFileWriteController.cs
+    line: 46
+    also_at: [48]
+    cwe: CWE-73
+    severity: high
+    corpus_coverage: cwe-73-arbitrary-file-write-csharp
+    summary: >
+      request.FileName is combined with the backup directory and written with
+      WriteAllText, with no containment check. README "Arbitrary File Write".
+
+  - id: zip-slip
+    file: DotnetSecurityFailures/Controllers/ZipSlipController.cs
+    line: 61
+    cwe: CWE-22
+    severity: high
+    corpus_coverage: cwe-22-zip-slip-csharp
+    summary: >
+      Archive entry names are joined to the extraction directory before any
+      containment check, so an entry named ../../ writes outside it.
+      README "Zip Slip".
+
+  - id: basic-ssrf
+    file: DotnetSecurityFailures/Controllers/SsrfController.cs
+    line: 42
+    cwe: CWE-918
+    severity: high
+    corpus_coverage: cwe-918-ssrf-csharp
+    summary: >
+      The url query parameter is fetched directly with HttpClient.GetAsync and
+      no allowlist or scheme check. README "Basic SSRF".
+
+  - id: ssrf-via-svg-href
+    file: DotnetSecurityFailures/Controllers/XssSvgController.cs
+    line: 69
+    cwe: CWE-918
+    severity: high
+    corpus_coverage: cwe-918-ssrf-csharp
+    summary: >
+      An href extracted from an uploaded SVG is fetched server-side without
+      validation. README "SSRF via File Upload".
+
+  # -------------------------------------------------------- api / business
+  - id: mass-assignment-over-posting
+    file: DotnetSecurityFailures/Controllers/MassAssignmentController.cs
+    line: 47
+    also_at: [50]
+    cwe: CWE-915
+    severity: high
+    corpus_coverage: cwe-915-aspnetcore-mass-assignment
+    summary: >
+      UpdateProfile binds the whole UserProfile from the request body and
+      assigns it over the current user, so Balance and Role are attacker
+      settable. README "Mass Assignment".
+
+  - id: cors-allow-any-origin-with-credentials
+    file: DotnetSecurityFailures/Program.cs
+    line: 39
+    also_at: [42]
+    cwe: CWE-942
+    severity: high
+    corpus_coverage: cwe-942-aspnetcore-permissive-cors
+    summary: >
+      The CORS policy calls SetIsOriginAllowed(_ => true) together with
+      AllowCredentials, so any site can make credentialed cross-origin calls.
+      README "CORS Misconfiguration".
+    scope_note: >
+      The second policy at lines 49-52 uses AllowAnyOrigin WITHOUT credentials
+      and is the safe counterpart.
+
+  - id: csrf-antiforgery-disabled
+    file: DotnetSecurityFailures/Controllers/CsrfController.cs
+    line: 43
+    also_at: [71]
+    cwe: CWE-352
+    severity: medium
+    corpus_coverage: cwe-352-aspnetcore-csrf-disabled
+    summary: >
+      State-changing POST actions carry [IgnoreAntiforgeryToken], removing CSRF
+      protection. README "CSRF".
+
+  - id: missing-rate-limiting-login
+    file: DotnetSecurityFailures/Controllers/MissingRateLimitingController.cs
+    line: 26
+    cwe: CWE-799
+    severity: medium
+    corpus_coverage: none
+    summary: >
+      The authentication endpoint has no throttling, so credentials can be
+      brute-forced. README "Missing Rate Limiting".
+    scope_note: >
+      Absence-shaped: nothing in the source is wrong, a control is missing.
+      Sentinel's applicability gate wants a named source and sink, so this class
+      needs the sink-and-enforcement-reason treatment that currently exists only
+      for access-control CWEs. Counting it in raw recall is honest; reading a
+      miss here as a reasoning failure is not.
+
+expected_coverage_note: >
+  Of the entries above, the majority are covered by a C# or ASP.NET Core rule in
+  the current corpus (see each entry's `corpus_coverage`). Known corpus gaps at
+  this revision: JSON/NoSQL query construction (CWE-91 via JSON operators),
+  CRLF response splitting (CWE-93), privilege escalation by role assignment
+  (CWE-269), password-reset host-header poisoning (CWE-640), directory listing
+  (CWE-548), sensitive data in URLs (CWE-598), excessive data exposure
+  (CWE-213), and missing rate limiting (CWE-799). Those should be read as corpus
+  gaps rather than reasoning failures.
+
+  False-positive controls this target exercises deliberately, because the app
+  ships secure counterparts beside most defects: parameterised ADO.NET commands,
+  an XmlReader with DtdProcessing.Prohibit and a null resolver, a real
+  certificate-validation callback, a credential-free AllowAnyOrigin CORS policy,
+  and — most importantly — 53 files that print their own vulnerable source as
+  raw-string teaching material. A reviewer that flags the teaching material has
+  not found a vulnerability; it has read the textbook.

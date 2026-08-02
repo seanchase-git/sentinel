@@ -1,0 +1,24 @@
+id: cwe-117-log-injection-csharp
+taxonomy:
+  - owasp: A09:2021
+  - cwe: CWE-117
+title: Log Forging from Untrusted C# Data
+severity: medium
+languages: [csharp]
+frameworks: []
+description: |
+  Logging attacker-controlled text without neutralizing line delimiters lets one
+  event forge additional records or corrupt downstream log parsing.
+detection_criteria: |
+  Flag request, header, form, or other external text concatenated or interpolated
+  into Console.WriteLine, Trace, or logger message text without CR/LF removal.
+  Structured logging with a constant message template and value argument is safe.
+example_vulnerable: |
+  logger.LogInformation($"Login failed for {request.UserName}");
+example_secure: |
+  logger.LogInformation("Login failed for {UserName}", SanitizeForLog(request.UserName));
+references:
+  - url: https://cwe.mitre.org/data/definitions/117.html
+    title: CWE-117 Improper Output Neutralization for Logs
+  - url: https://learn.microsoft.com/en-us/dotnet/core/extensions/logging
+    title: Microsoft .NET Logging

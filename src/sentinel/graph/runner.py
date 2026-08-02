@@ -54,6 +54,7 @@ async def review_file(graph, source_file: SourceFile) -> dict[str, Any]:
                 "abs_path": str(source_file.path),
                 "source": source,
                 "language_hint": source_file.language,
+                "grammar_hint": source_file.grammar,
             }
         )
         return _serialize_state(final_state)

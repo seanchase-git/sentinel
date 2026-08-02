@@ -1,0 +1,26 @@
+id: cwe-89-sql-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-89
+title: SQL Injection in ADO.NET or EF Core Raw SQL
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Concatenating or interpolating external values into ADO.NET command text or
+  EF Core raw SQL changes the SQL program instead of binding data parameters.
+detection_criteria: |
+  Flag tainted data used to construct SqlCommand.CommandText, DbCommand text,
+  FromSqlRaw, ExecuteSqlRaw, or SqlQueryRaw. Interpolation into FromSql is safe
+  when EF receives a FormattableString; parameter objects and placeholders are
+  safe. Require concrete source-to-query-text flow.
+example_vulnerable: |
+  command.CommandText = $"SELECT * FROM Users WHERE Name = '{name}'";
+example_secure: |
+  command.CommandText = "SELECT * FROM Users WHERE Name = @name";
+  command.Parameters.AddWithValue("@name", name);
+references:
+  - url: https://learn.microsoft.com/en-us/ef/core/querying/sql-queries
+    title: Microsoft EF Core SQL Queries
+  - url: https://cwe.mitre.org/data/definitions/89.html
+    title: CWE-89 SQL Injection

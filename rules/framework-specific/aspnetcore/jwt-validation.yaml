@@ -1,0 +1,25 @@
+id: cwe-347-aspnetcore-jwt-validation-bypass
+taxonomy:
+  - owasp: A07:2021
+  - cwe: CWE-347
+title: JWT Accepted Without Cryptographic Validation
+severity: critical
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Decoding JWT payloads or disabling signature, issuer, audience, or lifetime
+  checks allows attacker-authored claims to be trusted as authenticated identity.
+detection_criteria: |
+  Flag ReadJwtToken or manual Base64/JSON claim parsing used as authorization,
+  TokenValidationParameters with ValidateIssuerSigningKey=false or signature
+  validation bypass, RequireSignedTokens=false, or lifetime validation disabled.
+example_vulnerable: |
+  var token = new JwtSecurityTokenHandler().ReadJwtToken(request.Token);
+  return Ok(token.Claims);
+example_secure: |
+  handler.ValidateToken(request.Token, validationParameters, out _);
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/authentication/configure-jwt-bearer-authentication
+    title: Microsoft Configure JWT Bearer Authentication
+  - url: https://cwe.mitre.org/data/definitions/347.html
+    title: CWE-347 Improper Verification of Cryptographic Signature

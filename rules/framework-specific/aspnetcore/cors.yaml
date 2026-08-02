@@ -1,0 +1,24 @@
+id: cwe-942-aspnetcore-permissive-cors
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-942
+title: Overly Permissive ASP.NET Core CORS Policy
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Broad origin trust, especially when credentials are allowed or origins are
+  reflected, exposes authenticated or sensitive responses to untrusted sites.
+detection_criteria: |
+  Flag AllowAnyOrigin on sensitive browser APIs, SetIsOriginAllowed callbacks
+  that always return true, reflected Origin values, or broad origins combined
+  with AllowCredentials. A narrow WithOrigins allowlist is the control.
+example_vulnerable: |
+  policy.SetIsOriginAllowed(_ => true).AllowCredentials();
+example_secure: |
+  policy.WithOrigins("https://app.example.com").AllowCredentials();
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/cors
+    title: Microsoft Enable CORS in ASP.NET Core
+  - url: https://cwe.mitre.org/data/definitions/942.html
+    title: CWE-942 Overly Permissive Cross-domain Whitelist

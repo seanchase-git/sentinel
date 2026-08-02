@@ -1,0 +1,28 @@
+id: cwe-776-xml-entity-expansion-csharp
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-776
+title: Unbounded XML Entity Expansion in .NET
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  DTD entity expansion without a finite entity-character limit can consume large
+  amounts of memory and CPU from a small untrusted XML document.
+detection_criteria: |
+  Flag untrusted XML parsed with DtdProcessing.Parse and MaxCharactersFromEntities
+  set to zero/unbounded or an equivalent missing expansion limit. Prohibiting DTDs
+  is preferred; a justified finite limit and document size bound are controls.
+example_vulnerable: |
+  var settings = new XmlReaderSettings {
+      DtdProcessing = DtdProcessing.Parse, MaxCharactersFromEntities = 0
+  };
+example_secure: |
+  var settings = new XmlReaderSettings {
+      DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null
+  };
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/api/system.xml.xmlreadersettings.maxcharactersfromentities
+    title: Microsoft XmlReaderSettings.MaxCharactersFromEntities
+  - url: https://cwe.mitre.org/data/definitions/776.html
+    title: CWE-776 Improper Restriction of Recursive Entity References

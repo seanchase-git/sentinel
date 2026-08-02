@@ -1,0 +1,25 @@
+id: cwe-327-weak-crypto-csharp
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-327
+title: Weak Hash or Cipher in .NET Security Use
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  MD5, SHA-1, DES, RC2, TripleDES, and ECB mode do not provide modern collision
+  resistance or confidentiality for security-sensitive data.
+detection_criteria: |
+  Flag MD5.Create, SHA1.Create, DES/TripleDES/RC2, CipherMode.ECB, or equivalent
+  used for passwords, signatures, tokens, integrity, or confidential data. Do not
+  flag a documented non-security checksum; prefer password hashing or authenticated encryption.
+example_vulnerable: |
+  var digest = MD5.HashData(Encoding.UTF8.GetBytes(password));
+example_secure: |
+  var digest = Rfc2898DeriveBytes.Pbkdf2(password, salt, 200_000,
+      HashAlgorithmName.SHA256, 32);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/security/cryptographic-standards
+    title: Microsoft Cryptographic Standards
+  - url: https://cwe.mitre.org/data/definitions/327.html
+    title: CWE-327 Use of a Broken or Risky Cryptographic Algorithm

@@ -1,0 +1,24 @@
+id: cwe-917-expression-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-917
+title: Dynamic Expression Injection in C#
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Parsing an attacker-supplied Dynamic LINQ or expression-language program lets
+  the caller alter predicates and invoke capabilities exposed by the evaluator.
+detection_criteria: |
+  Flag untrusted expression text passed to Dynamic LINQ Where, OrderBy, Select,
+  ParseLambda, or another expression evaluator. Map user choices to fixed
+  expression trees instead of accepting expression source.
+example_vulnerable: |
+  var visible = products.AsQueryable().Where(request.Filter).ToList();
+example_secure: |
+  var visible = products.Where(p => p.OwnerId == user.Id).ToList();
+references:
+  - url: https://cwe.mitre.org/data/definitions/917.html
+    title: CWE-917 Expression Language Injection
+  - url: https://dynamic-linq.net/advanced-configuration
+    title: System.Linq.Dynamic.Core Configuration

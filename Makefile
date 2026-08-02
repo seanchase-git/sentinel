@@ -1,5 +1,5 @@
 .PHONY: status bootstrap db-init backends-up backends-down backends-status proxy-up proxy-down \
-        rules-load test test-integration lint eval review-fixture
+        rules-load test test-integration lint eval review-fixture benchmark-dotnet
 
 UV ?= uv
 
@@ -63,3 +63,6 @@ eval:
 
 review-fixture:
 	$(UV) run sentinel review tests/fixtures/vulnerable_apps/flask_sqli --output out/
+
+benchmark-dotnet:
+	bash scripts/fetch-dotnet-benchmark.sh

@@ -362,6 +362,23 @@ def validate_findings(
             "claimed_severity": candidate.severity,
             "explanation": candidate.explanation,
             "grounded_in_rule_chunk": rule.yaml_body,
+            # Evidence the applicability gate already located in the file. It
+            # travels with the finding so the judge adjudicates on the same
+            # verified material the gate used, and so the report's audit trail
+            # records what the taint claim actually rested on. Without it the
+            # judge sees one quoted line and refutes real findings for "the
+            # snippet does not show where this value came from" — the very
+            # move its own prompt forbids.
+            "untrusted_source": (
+                candidate.untrusted_source.model_dump()
+                if candidate.untrusted_source is not None
+                else None
+            ),
+            "sink": candidate.sink.model_dump() if candidate.sink is not None else None,
+            # Access-control findings have no untrusted source by construction;
+            # this reason IS their evidence, so the judge must see it or it
+            # adjudicates a missing-check finding on the sink alone.
+            "auth_missing_enforcement_reason": candidate.auth_missing_enforcement_reason,
             "judge": None,
         }
         if notes:

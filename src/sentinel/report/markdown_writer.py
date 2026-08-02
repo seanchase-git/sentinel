@@ -86,7 +86,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"({', '.join(f'{v} {k}' for k, v in summary['file_status_counts'].items())})  ",
         f"**Findings:** {summary['findings']} · "
         f"**Suppressed candidates:** {summary['suppressed_candidates']} · "
-        f"**Rejected inputs:** {summary['rejected_inputs']}",
+        f"**Rejected inputs:** {summary['rejected_inputs']}"
+        + (
+            f" · **Guardrail warnings:** {summary['input_warnings']}"
+            if summary.get("input_warnings")
+            else ""
+        ),
         "",
     ]
 
@@ -130,6 +135,17 @@ def render_markdown(report: dict[str, Any]) -> str:
         out += ["## ⛔ Rejected inputs", ""]
         for r in report["rejected_inputs"]:
             out.append(f"- `{r['file_path']}` — guardrail category {r['category']}: {r['note']}")
+        out.append("")
+
+    # Distinct from rejected inputs on purpose: these files WERE reviewed. The
+    # section exists so downgrading a guardrail objection is a visible decision
+    # rather than a silent one.
+    if report.get("input_warnings"):
+        out += ["## ⚠️ Guardrail warnings (file was still reviewed)", ""]
+        for w in report["input_warnings"]:
+            out.append(
+                f"- `{w['file_path']}` — {w['category']} ({w['label']}): {w['note']}"
+            )
         out.append("")
 
     if not report["findings"]:

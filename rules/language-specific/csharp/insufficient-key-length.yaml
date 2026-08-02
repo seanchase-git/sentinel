@@ -1,0 +1,26 @@
+id: cwe-326-insufficient-key-length-csharp
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-326
+title: Insufficient Cryptographic Key Length in .NET
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  DES, two-key TripleDES, undersized RSA, and other short keys provide too little
+  work factor against brute-force or factoring attacks.
+detection_criteria: |
+  Flag DES encryption, TripleDES for new confidentiality designs, RSA keys below
+  2048 bits, or explicit symmetric keys below the algorithm's accepted modern
+  security strength. Prefer AES-GCM and RSA 2048 bits or stronger where appropriate.
+example_vulnerable: |
+  using var des = DES.Create();
+  var ciphertext = des.CreateEncryptor().TransformFinalBlock(data, 0, data.Length);
+example_secure: |
+  using var aes = new AesGcm(RandomNumberGenerator.GetBytes(32));
+  aes.Encrypt(nonce, plaintext, ciphertext, tag);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/security/cryptographic-standards
+    title: Microsoft Cryptographic Standards
+  - url: https://cwe.mitre.org/data/definitions/326.html
+    title: CWE-326 Inadequate Encryption Strength

@@ -1,0 +1,26 @@
+id: cwe-22-zip-slip-csharp
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-22
+title: Zip Slip During .NET Archive Extraction
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Archive entry names can contain rooted or parent paths; combining them directly
+  with an extraction directory writes outside that directory.
+detection_criteria: |
+  Flag ZipArchiveEntry.FullName or Name combined into a destination and passed to
+  ExtractToFile, File.Create, or CopyTo without GetFullPath plus separator-aware
+  containment below the canonical extraction root.
+example_vulnerable: |
+  entry.ExtractToFile(Path.Combine(extractRoot, entry.FullName));
+example_secure: |
+  var destination = Path.GetFullPath(Path.Combine(extractRoot, entry.FullName));
+  if (!destination.StartsWith(rootWithSeparator, StringComparison.Ordinal)) throw new InvalidDataException();
+  entry.ExtractToFile(destination);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/api/system.io.compression.zipfileextensions.extracttofile
+    title: Microsoft ZipFileExtensions.ExtractToFile
+  - url: https://cwe.mitre.org/data/definitions/22.html
+    title: CWE-22 Path Traversal

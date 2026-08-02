@@ -203,6 +203,8 @@ class TestFrameworkNormalization:
             ("Express.js", "express"),
             ("fast-api", "fastapi"),
             ("  flask  ", "flask"),
+            ("ASP.NET Core", "aspnetcore"),
+            ("Blazor", "aspnetcore"),
         ],
     )
     def test_aliases_map_onto_corpus_vocabulary(self, raw, expected):
@@ -225,7 +227,8 @@ class TestFrameworkNormalization:
         # the detector and the fallback must agree, or deterministic detection
         # could produce a value the fallback would have rejected
         assert KNOWN_FRAMEWORKS == {
-            "flask", "django", "fastapi", "express", "fastify", "angular", "nextjs", "react",
+            "flask", "django", "fastapi", "express", "fastify", "angular", "nextjs",
+            "react", "aspnetcore",
         }
 
     def test_every_known_framework_is_declared_by_at_least_one_rule(self):
@@ -334,6 +337,25 @@ class TestFrameworkDetection:
         from sentinel.graph.nodes import detect_framework
 
         assert detect_framework("const x = require('lodash');") is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "using Microsoft.AspNetCore.Mvc;\npublic class Users : ControllerBase {}",
+            'var app = WebApplication.CreateBuilder(args).Build();\napp.MapGet("/", () => 1);',
+            '@page "/users"\n@inject NavigationManager Navigation',
+            "public sealed class Widget : ComponentBase { private IJSRuntime JS = null!; }",
+        ],
+    )
+    def test_aspnetcore_detected_across_hosting_models(self, source):
+        from sentinel.graph.nodes import detect_framework
+
+        assert detect_framework(source) == "aspnetcore"
+
+    def test_plain_csharp_library_is_not_aspnetcore(self):
+        from sentinel.graph.nodes import detect_framework
+
+        assert detect_framework("namespace Acme; public sealed class Calculator {}") is None
 
 
 class TestInlineElidedBody:
@@ -904,6 +926,609 @@ class TestApplicabilityPipelineWiring:
             gateway, "app.py", "python", "x = 1", window, [RULE], reasoning_enabled=True
         )
         assert gateway.messages[0] == {"role": "system", "content": "/think"}
+
+
+class TestCSharpApplicability:
+    @staticmethod
+    def _rule(cwe: str, rule_id: str = "csharp-test-rule") -> RetrievedRule:
+        return RetrievedRule(
+            **{
+                **RULE.__dict__,
+                "rule_id": rule_id,
+                "yaml_body": f"id: {rule_id}\ntaxonomy:\n  - cwe: {cwe}",
+                "languages": ["csharp"],
+                "frameworks": ["aspnetcore"],
+            }
+        )
+
+    @staticmethod
+    def _window(source: str):
+        from sentinel.ingest.chunker import CodeChunk, ReviewWindow
+
+        return ReviewWindow(
+            chunks=[CodeChunk(text=source, start_line=1, end_line=len(source.split("\n")))]
+        )
+
+    def test_csharp_interpolated_sql_flow_and_parameter_control(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-89", "cwe-89-sql-injection-csharp")
+        vulnerable = "\n".join(
+            [
+                "var name = request.Query[\"name\"];",
+                'var sql = $"SELECT * FROM Users WHERE Name = \'{name}\'";',
+                "command.CommandText = sql;",
+            ]
+        )
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=3,
+            line_end=3,
+            code_snippet="command.CommandText = sql;",
+            untrusted_source=EvidenceLocation(line=1, text='request.Query["name"]'),
+            sink=EvidenceLocation(line=3, text="CommandText"),
+        )
+        assert validate_applicability(
+            candidate, vulnerable, self._window(vulnerable), rule, grammar="csharp"
+        ).accepted
+
+        parameterized = "\n".join(
+            [
+                "var name = request.Query[\"name\"];",
+                'command.CommandText = "SELECT * FROM Users WHERE Name = @name";',
+                'command.Parameters.AddWithValue("@name", name);',
+            ]
+        )
+        candidate = candidate.model_copy(
+            update={
+                "line_start": 2,
+                "line_end": 2,
+                "code_snippet": parameterized.split("\n")[1],
+                "sink": EvidenceLocation(line=2, text="CommandText"),
+            }
+        )
+        decision = validate_applicability(
+            candidate, parameterized, self._window(parameterized), rule, grammar="csharp"
+        )
+        assert decision.reason == "applicability_injection_no_query_text_flow"
+
+    def test_ado_net_command_constructor_is_a_query_operation(self):
+        """`new SqlCommand(sql, connection)` is the commonest C# SQLi shape.
+
+        ADO.NET puts the statement in the command's first constructor argument
+        rather than in a method call or a CommandText assignment, so a gate that
+        only knew Execute*/CommandText/FromSqlRaw saw no query operation on the
+        sink line and rejected real findings as sink_not_query_operation.
+        """
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-89", "cwe-89-sql-injection-csharp")
+        source = "\n".join(
+            [
+                'var name = Request.Query["name"];',
+                'var query = $"SELECT * FROM Users WHERE Name = \'{name}\'";',
+                "await using var command = new SqlCommand(query, connection);",
+            ]
+        )
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=3,
+            line_end=3,
+            code_snippet="await using var command = new SqlCommand(query, connection);",
+            untrusted_source=EvidenceLocation(line=1, text='Request.Query["name"]'),
+            sink=EvidenceLocation(line=3, text="SqlCommand"),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        )
+        assert decision.accepted, decision.reason
+
+    def test_ado_net_parameterised_command_is_still_rejected(self):
+        """The constructor shape must not become a blanket pass."""
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-89", "cwe-89-sql-injection-csharp")
+        parameterised = (
+            'await using var command = new SqlCommand("SELECT * FROM Users '
+            'WHERE Name = @name", connection);'
+        )
+        source = "\n".join(
+            [
+                'var name = Request.Query["name"];',
+                parameterised,
+                'command.Parameters.AddWithValue("@name", name);',
+            ]
+        )
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=2,
+            line_end=2,
+            code_snippet=parameterised,
+            untrusted_source=EvidenceLocation(line=1, text='Request.Query["name"]'),
+            sink=EvidenceLocation(line=2, text="SqlCommand"),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        )
+        assert decision.reason == "applicability_injection_no_query_text_flow"
+
+    def test_template_literal_interpolation_is_not_masked_away(self):
+        """`${...}` inside a template literal is executable code, not a string.
+
+        Masking the whole literal would hide the sink that lives in the hole and
+        turn a hardening measure into a false-negative source for JavaScript,
+        where this shape is the normal way to build a query.
+        """
+        from sentinel.graph.evidence import _first_call_argument, _mask_non_code
+
+        line = "const value = `${db.query(taintedSql)}`;"
+        masked, still_open = _mask_non_code(line)
+        assert "db.query(taintedSql)" in masked, "interpolation must survive masking"
+        assert still_open is False
+        assert _first_call_argument(line) == "taintedSql"
+
+    def test_block_comment_opened_on_an_earlier_line_is_carried_forward(self):
+        """A line-only lexer cannot see a `/*` opened above it.
+
+        Without that state the commented call is picked as the query operation
+        for a statement that is properly parameterised, which is fail-open.
+        """
+        from sentinel.graph.evidence import _block_comment_open_at, _first_call_argument
+
+        lines = [
+            "/*",
+            "SqlCommand(user, conn) */ var c = new SqlCommand(safeSql, conn);",
+        ]
+        assert _block_comment_open_at(lines, 2, "csharp") is True
+        assert _first_call_argument(lines[1], True, "csharp") == "safeSql"
+        # and without the carried state it would wrongly read the commented call
+        assert _first_call_argument(lines[1], False, "csharp") == "user"
+
+    def test_commented_sink_cannot_supply_the_argument_for_a_real_one(self):
+        """Locate the operation in CODE, not in a comment on the same line.
+
+        The executability check accepts any occurrence of the sink text on the
+        line, so if the argument is read from the FIRST regex hit anywhere, a
+        commented-out call can donate a tainted argument to a real call that is
+        properly parameterised — the finding then passes on evidence from two
+        different constructs.
+        """
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-89", "cwe-89-sql-injection-csharp")
+        real_call = (
+            '/* new SqlCommand(name, connection) */ using var c = new SqlCommand('
+            '"SELECT * FROM Users WHERE Name = @name", connection);'
+        )
+        source = "\n".join([
+            'var name = Request.Query["name"];',
+            real_call,
+            'c.Parameters.AddWithValue("@name", name);',
+        ])
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=2,
+            line_end=2,
+            code_snippet=real_call,
+            untrusted_source=EvidenceLocation(line=1, text='Request.Query["name"]'),
+            sink=EvidenceLocation(line=2, text="SqlCommand"),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        )
+        assert not decision.accepted
+        assert decision.reason == "applicability_injection_no_query_text_flow"
+
+    @pytest.mark.parametrize(
+        "source,sink_text,grammar",
+        [
+            ("// Process.Start(request.Command);", "Process.Start", "csharp"),
+            ('var sample = "Process.Start(request.Command);";', "Process.Start", "csharp"),
+            ("<pre>Process.Start(request.Command);</pre>", "Process.Start", "razor"),
+        ],
+    )
+    def test_displayed_or_nonexecuted_operations_are_rejected(self, source, sink_text, grammar):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-78", "cwe-78-command-injection-csharp")
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=1,
+            line_end=1,
+            code_snippet=source,
+            untrusted_source=EvidenceLocation(line=1, text="request.Command"),
+            sink=EvidenceLocation(line=1, text=sink_text),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar=grammar
+        )
+        assert decision.reason == "applicability_sink_not_executable_code"
+
+    def test_string_constructed_then_passed_to_execution_sink_is_allowed(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule("CWE-78", "cwe-78-command-injection-csharp")
+        source = "\n".join(
+            [
+                "var host = request.Query[\"host\"];",
+                'var command = $"ping {host}";',
+                "Process.Start(command);",
+            ]
+        )
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=3,
+            line_end=3,
+            code_snippet="Process.Start(command);",
+            untrusted_source=EvidenceLocation(line=1, text='request.Query["host"]'),
+            sink=EvidenceLocation(line=3, text="Process.Start"),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        )
+        assert decision.accepted, decision.reason
+
+    def test_csharp_environment_secret_and_certificate_controls_are_clean(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        secret_rule = self._rule("CWE-798", "cwe-798-hardcoded-secrets-csharp")
+        env = 'var apiKey = Environment.GetEnvironmentVariable("SERVICE_API_KEY");'
+        secret = _candidate(
+            rule_id=secret_rule.rule_id,
+            line_start=1,
+            line_end=1,
+            code_snippet=env,
+            untrusted_source=None,
+            sink=EvidenceLocation(line=1, text="apiKey"),
+        )
+        assert validate_applicability(
+            secret, env, self._window(env), secret_rule, grammar="csharp"
+        ).reason == "applicability_hardcoded_secret_is_environment_read"
+
+        cert_rule = self._rule("CWE-295", "cwe-295-certificate-validation-bypass-csharp")
+        secure = (
+            "handler.ServerCertificateCustomValidationCallback = "
+            "(_, _, _, errors) => errors == SslPolicyErrors.None;"
+        )
+        cert = _candidate(
+            rule_id=cert_rule.rule_id,
+            line_start=1,
+            line_end=1,
+            code_snippet=secure,
+            untrusted_source=None,
+            sink=EvidenceLocation(line=1, text="ServerCertificateCustomValidationCallback"),
+        )
+        assert validate_applicability(
+            cert, secure, self._window(secure), cert_rule, grammar="csharp"
+        ).reason == "applicability_tls_not_explicitly_disabled"
+
+    @pytest.mark.parametrize(
+        "cwe,source,sink",
+        [
+            ("CWE-347", "var token = handler.ReadJwtToken(input);", "ReadJwtToken"),
+            ("CWE-352", "app.MapPost(\"/pay\", Pay).DisableAntiforgery();", "DisableAntiforgery"),
+            ("CWE-915", "app.MapPut(\"/user\", (User user) => Save(user));", "MapPut"),
+            ("CWE-942", "policy.SetIsOriginAllowed(_ => true);", "SetIsOriginAllowed"),
+        ],
+    )
+    def test_csharp_property_shapes_accept_sink_without_source(self, cwe, source, sink):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        rule = self._rule(cwe)
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=1,
+            line_end=1,
+            code_snippet=source,
+            untrusted_source=None,
+            sink=EvidenceLocation(line=1, text=sink),
+        )
+        decision = validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        )
+        assert decision.accepted, decision.reason
+
+    def test_csharp_flow_shape_requires_source(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source = "await httpClient.GetAsync(url);"
+        rule = self._rule("CWE-918", "cwe-918-ssrf-csharp")
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=1,
+            line_end=1,
+            code_snippet=source,
+            untrusted_source=None,
+            sink=EvidenceLocation(line=1, text="GetAsync"),
+        )
+        assert validate_applicability(
+            candidate, source, self._window(source), rule, grammar="csharp"
+        ).reason == "applicability_missing_untrusted_source"
+
+
+class TestRazorCodeBlockIsParsedAsCSharp:
+    """A Blazor page that documents its own vulnerability must not be flagged for it.
+
+    The tree-sitter Razor grammar cannot parse a ``@code`` block containing a C#
+    raw string literal — it emits a bare ERROR node, whose ancestry proves
+    nothing either way, so displayed sample code read as executable. Real Blazor
+    hits this constantly: in the-most-vulnerable-dotnet-app benchmark, 43 of 64
+    .razor files fail to parse and 53 embed their own source as
+    ``private const string VulnerableCode = \"\"\"...\"\"\"`` teaching material.
+
+    The body of a ``@code`` block is plain C#, so it is parsed with the C#
+    grammar, which does model raw/verbatim/interpolated literals. Markup above
+    the block still goes through the Razor grammar.
+    """
+
+    SOURCE = '\n'.join([
+        '@page "/stored-xss"',
+        "",
+        "@foreach (var comment in comments)",
+        "{",
+        "    <div>@((MarkupString)comment.Text)</div>",
+        "}",
+        "",
+        "@code {",
+        '    private const string VulnerableCode = """',
+        "// DANGEROUS: displaying raw HTML",
+        "<div>@((MarkupString)comment.Text)</div>",
+        '""";',
+        "",
+        '    [SupplyParameterFromQuery(Name = "q")]',
+        "    public string? Query { get; set; }",
+        "",
+        "    private List<Comment> comments = new();",
+        "}",
+    ])
+
+    @staticmethod
+    def _candidate(line: int):
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source_lines = TestRazorCodeBlockIsParsedAsCSharp.SOURCE.split("\n")
+        return _candidate(
+            rule_id="cwe-79-aspnetcore-raw-rendering",
+            line_start=line,
+            line_end=line,
+            code_snippet=source_lines[line - 1],
+            untrusted_source=EvidenceLocation(line=14, text="SupplyParameterFromQuery"),
+            sink=EvidenceLocation(line=line, text="MarkupString"),
+        )
+
+    @staticmethod
+    def _rule():
+        return RetrievedRule(
+            **{
+                **RULE.__dict__,
+                "rule_id": "cwe-79-aspnetcore-raw-rendering",
+                "yaml_body": "id: cwe-79-aspnetcore-raw-rendering\ntaxonomy:\n  - cwe: CWE-79",
+                "languages": ["csharp"],
+                "frameworks": ["aspnetcore"],
+            }
+        )
+
+    def test_real_markup_render_is_executable(self):
+        from sentinel.graph.evidence import _sink_is_executable
+
+        assert _sink_is_executable(self._candidate(5), self.SOURCE, "razor", self._rule())
+
+    def test_sample_inside_raw_string_in_code_block_is_not_executable(self):
+        from sentinel.graph.evidence import _sink_is_executable
+
+        assert not _sink_is_executable(self._candidate(11), self.SOURCE, "razor", self._rule())
+
+    def test_markup_after_a_code_block_is_not_judged_as_csharp(self):
+        """A @code body is bounded; the markup after it is still markup.
+
+        Taking "everything after the first @code" as C# misparses trailing
+        markup, so a sample in a <pre> after the block reads as executable C#.
+        Razor also permits @functions BEFORE the markup, which puts the whole
+        page on the wrong side of that boundary.
+        """
+        from sentinel.graph.evidence import _sink_is_executable
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source = "\n".join([
+            "@functions {",
+            "    private int Count = 0;",
+            "}",
+            "",
+            "<pre>new SqlCommand(name, connection)</pre>",
+        ])
+        candidate = _candidate(
+            rule_id="cwe-89-sql-injection-csharp",
+            line_start=5,
+            line_end=5,
+            code_snippet="<pre>new SqlCommand(name, connection)</pre>",
+            untrusted_source=None,
+            sink=EvidenceLocation(line=5, text="SqlCommand"),
+        )
+        assert not _sink_is_executable(candidate, source, "razor", self._rule())
+
+    def test_brace_inside_a_raw_string_does_not_end_the_code_block(self):
+        """The samples these pages hold are full of braces.
+
+        If brace counting does not skip strings and comments, the block ends at
+        the first `}` inside a sample and everything after it is misclassified.
+        """
+        from sentinel.graph.evidence import _razor_code_spans
+
+        source = "\n".join([
+            "@code {",
+            '    private const string S = """',
+            "if (x) { call(); }",
+            '""";',
+            "    private int After = 1;",
+            "}",
+        ])
+        spans = _razor_code_spans(source)
+        assert len(spans) == 1
+        start, end = spans[0]
+        # the span must still contain the declaration that follows the sample
+        assert b"After" in source.encode()[start:end]
+
+    def test_a_quoted_argument_to_a_live_call_is_executable(self):
+        """`JS.InvokeVoidAsync("eval", x)` — the danger IS the quoted argument.
+
+        deep_review.md already says a string "actually passed to a query,
+        process, template, deserializer, renderer, or other execution sink
+        remains eligible". Rejecting every literal wholesale contradicted the
+        contract the model is held to and killed a real Blazor finding.
+        """
+        from sentinel.graph.evidence import _sink_is_executable
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source = "\n".join([
+            "@code {",
+            "    private string Script = string.Empty;",
+            '    private Task Run() => JS.InvokeVoidAsync("eval", Script).AsTask();',
+            "}",
+        ])
+        candidate = _candidate(
+            rule_id="cwe-79-blazor-unsafe-js-interop",
+            line_start=3,
+            line_end=3,
+            code_snippet=source.split("\n")[2],
+            untrusted_source=None,
+            sink=EvidenceLocation(line=3, text="eval"),
+        )
+        assert _sink_is_executable(candidate, source, "razor", self._rule())
+
+    def test_a_literal_that_reaches_no_call_is_still_rejected(self):
+        """The documentation-sample rejection must survive the reprieve above."""
+        from sentinel.graph.evidence import _sink_is_executable
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source = 'var sample = "Process.Start(request.Command);";'
+        candidate = _candidate(
+            rule_id="cwe-78-command-injection-csharp",
+            line_start=1,
+            line_end=1,
+            code_snippet=source,
+            untrusted_source=None,
+            sink=EvidenceLocation(line=1, text="Process.Start"),
+        )
+        assert not _sink_is_executable(candidate, source, "csharp", self._rule())
+
+    def test_code_block_inside_a_razor_comment_is_not_real_csharp(self):
+        """@* ... *@ can contain anything, including the text "@code {".
+
+        Treating a commented block as a real C# region would parse its contents
+        with the C# tree and let the commented sink read as executable.
+        """
+        from sentinel.graph.evidence import _razor_code_spans, _sink_is_executable
+        from sentinel.graph.schemas import EvidenceLocation
+
+        source = "\n".join([
+            '@page "/x"',
+            "@code {",
+            "    private int A = 1;",
+            "}",
+            "",
+            "@*",
+            "@code { var c = new SqlCommand(userInput, conn); }",
+            "*@",
+        ])
+        assert len(_razor_code_spans(source)) == 1, "the commented block is not a block"
+
+        candidate = _candidate(
+            rule_id="cwe-89-sql-injection-csharp",
+            line_start=7,
+            line_end=7,
+            code_snippet=source.split("\n")[6],
+            untrusted_source=None,
+            sink=EvidenceLocation(line=7, text="SqlCommand"),
+        )
+        assert not _sink_is_executable(candidate, source, "razor", self._rule())
+
+    def test_gate_rejects_the_documented_sample(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.ingest.chunker import CodeChunk, ReviewWindow
+
+        line_count = len(self.SOURCE.split("\n"))
+        window = ReviewWindow(
+            chunks=[CodeChunk(text=self.SOURCE, start_line=1, end_line=line_count)]
+        )
+        decision = validate_applicability(
+            self._candidate(11), self.SOURCE, window, self._rule(), grammar="razor"
+        )
+        assert decision.reason == "applicability_sink_not_executable_code"
+
+
+class TestResolvedEvidenceReachesTheJudge:
+    """The judge is told these lines were verified, so they must be the found ones.
+
+    _line_at tolerates the model's line drifting by a few lines and recomputes
+    the line from where the text actually sits. If the finding then carries the
+    model's CLAIMED line instead, judge_refute.md's promise — "located in this
+    file by a deterministic checker" — is false for that line, and the judge
+    reasons about a location nothing verified.
+    """
+
+    def test_applicability_returns_the_located_lines(self):
+        from sentinel.graph.evidence import validate_applicability
+        from sentinel.graph.schemas import EvidenceLocation
+        from sentinel.ingest.chunker import CodeChunk, ReviewWindow
+
+        rule = RetrievedRule(
+            **{
+                **RULE.__dict__,
+                "rule_id": "cwe-89-sql-injection-csharp",
+                "yaml_body": "id: cwe-89-sql-injection-csharp\ntaxonomy:\n  - cwe: CWE-89",
+                "languages": ["csharp"],
+            }
+        )
+        source = "\n".join([
+            "// comment header the model points at",
+            'var name = Request.Query["name"];',
+            'var query = $"SELECT * FROM Users WHERE Name = \'{name}\'";',
+            "await using var command = new SqlCommand(query, connection);",
+        ])
+        window = ReviewWindow(chunks=[CodeChunk(text=source, start_line=1, end_line=4)])
+        candidate = _candidate(
+            rule_id=rule.rule_id,
+            line_start=4,
+            line_end=4,
+            code_snippet="await using var command = new SqlCommand(query, connection);",
+            # claims line 1 for a source that actually lives on line 2
+            untrusted_source=EvidenceLocation(line=1, text='Request.Query["name"]'),
+            sink=EvidenceLocation(line=4, text="SqlCommand"),
+        )
+        decision = validate_applicability(candidate, source, window, rule, grammar="csharp")
+        assert decision.accepted, decision.reason
+        assert decision.resolved_source is not None
+        assert decision.resolved_source.line == 2, "must report where the text was FOUND"
+        assert decision.resolved_sink is not None
+        assert decision.resolved_sink.line == 4
+
+    def test_auth_enforcement_reason_is_rendered_for_the_judge(self):
+        """Access-control findings have no source; the reason IS the evidence."""
+        from sentinel.graph.nodes import _format_evidence
+
+        rendered = _format_evidence(
+            {
+                "untrusted_source": None,
+                "sink": {"line": 12, "text": "MapDelete"},
+                "auth_missing_enforcement_reason": "no [Authorize] on the route",
+            }
+        )
+        assert "sink — line 12: MapDelete" in rendered
+        assert "no [Authorize] on the route" in rendered
+
+    def test_evidence_renders_placeholder_when_nothing_recorded(self):
+        from sentinel.graph.nodes import _format_evidence
+
+        assert _format_evidence({}) == "(none recorded)"
 
 
 class TestRefutationJudge:

@@ -30,6 +30,15 @@ $file_path:$line_start-$line_end
 
 $code_snippet
 
+## Verified evidence locations
+
+Each line below was located in this file by a deterministic checker before you
+were asked, so it is real source text at the stated line, not a model claim.
+The snippet above is only the line the finding is anchored to; these lines are
+the rest of the evidence and may sit above or below it.
+
+$evidence
+
 ## Candidate explanation
 
 $explanation

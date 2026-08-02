@@ -1,0 +1,25 @@
+id: cwe-295-certificate-validation-bypass-csharp
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-295
+title: .NET TLS Certificate Validation Bypass
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  Accepting every server certificate makes HTTPS vulnerable to interception and
+  permits an attacker-controlled certificate to authenticate as the destination.
+detection_criteria: |
+  Flag DangerousAcceptAnyServerCertificateValidator, a certificate callback that
+  returns true unconditionally, or ServicePointManager validation bypass. A callback
+  that validates errors, chain, hostname, or a deliberately pinned key is a control.
+example_vulnerable: |
+  handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+example_secure: |
+  handler.ServerCertificateCustomValidationCallback =
+      (_, certificate, chain, errors) => errors == SslPolicyErrors.None;
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclienthandler.dangerousacceptanyservercertificatevalidator
+    title: Microsoft DangerousAcceptAnyServerCertificateValidator
+  - url: https://cwe.mitre.org/data/definitions/295.html
+    title: CWE-295 Improper Certificate Validation

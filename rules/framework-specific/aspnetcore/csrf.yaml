@@ -1,0 +1,28 @@
+id: cwe-352-aspnetcore-csrf-disabled
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-352
+title: Missing or Disabled ASP.NET Core Antiforgery Enforcement
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Cookie-authenticated state-changing endpoints without antiforgery validation can
+  be invoked cross-site using the victim's ambient authentication cookie.
+detection_criteria: |
+  Flag a concrete cookie-authenticated state-changing controller or endpoint with
+  IgnoreAntiforgeryToken, DisableAntiforgery, or no covering validation where the
+  request shape is browser-forgeable. Do not flag bearer-only APIs or safe methods.
+example_vulnerable: |
+  [HttpPost("purchase")]
+  [IgnoreAntiforgeryToken]
+  public IActionResult Purchase(PurchaseRequest request) => Charge(request);
+example_secure: |
+  [HttpPost("purchase")]
+  [ValidateAntiForgeryToken]
+  public IActionResult Purchase(PurchaseRequest request) => Charge(request);
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/anti-request-forgery
+    title: Microsoft Prevent CSRF Attacks in ASP.NET Core
+  - url: https://cwe.mitre.org/data/definitions/352.html
+    title: CWE-352 Cross-Site Request Forgery

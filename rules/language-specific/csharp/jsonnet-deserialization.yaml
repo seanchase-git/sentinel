@@ -1,0 +1,28 @@
+id: cwe-502-jsonnet-typenamehandling-csharp
+taxonomy:
+  - owasp: A08:2021
+  - cwe: CWE-502
+title: Unsafe JSON.NET TypeNameHandling
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  JSON.NET type metadata can select runtime types during deserialization; when
+  untrusted JSON is accepted without a strict binder this can instantiate gadgets.
+detection_criteria: |
+  Flag external JSON deserialized with TypeNameHandling other than None when no
+  restrictive ISerializationBinder allowlists exact expected types. A fixed DTO
+  with TypeNameHandling.None or System.Text.Json polymorphism allowlists is safe.
+example_vulnerable: |
+  var settings = new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All };
+  var value = JsonConvert.DeserializeObject(request.Json, settings);
+example_secure: |
+  var value = JsonConvert.DeserializeObject<ProfileDto>(request.Json,
+      new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.None });
+references:
+  - url: https://www.newtonsoft.com/json/help/html/SerializeTypeNameHandling.htm
+    title: Newtonsoft TypeNameHandling Documentation
+  - url: https://www.newtonsoft.com/json/help/html/SerializeSerializationBinder.htm
+    title: Newtonsoft Serialization Binder Documentation
+  - url: https://cwe.mitre.org/data/definitions/502.html
+    title: CWE-502 Deserialization of Untrusted Data

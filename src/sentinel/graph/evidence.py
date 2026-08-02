@@ -16,17 +16,23 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import get_close_matches
 
+from tree_sitter_language_pack import get_parser
+
 from sentinel.graph.schemas import CandidateFinding, EvidenceLocation
 from sentinel.ingest.chunker import ReviewWindow
 from sentinel.retrieval.rules_store import RetrievedRule
 
 _CWE_RE = re.compile(r"\bCWE-\d+\b", re.IGNORECASE)
 _TLS_DISABLED_RE = re.compile(
-    r"\bverify\s*=\s*False\b|\bCERT_NONE\b|\b_create_unverified_context\s*\(",
+    r"\bverify\s*=\s*False\b|\bCERT_NONE\b|\b_create_unverified_context\s*\(|"
+    r"DangerousAcceptAnyServerCertificateValidator|"
+    r"ServerCertificateCustomValidationCallback\s*=\s*(?:\([^)]*\)|[^=;]+)=>\s*true\b|"
+    r"ServerCertificateValidationCallback\s*\+=?\s*(?:\([^)]*\)|[^=;]+)=>\s*true\b",
     re.IGNORECASE,
 )
 _ENV_READ_RE = re.compile(
-    r"\bos\.environ\b|\bos\.getenv\s*\(|\bprocess\.env\b|\bgetenv\s*\(",
+    r"\bos\.environ\b|\bos\.getenv\s*\(|\bprocess\.env\b|\bgetenv\s*\(|"
+    r"\bEnvironment\.GetEnvironmentVariable\s*\(|\bGetEnvironmentVariable\s*\(",
     re.IGNORECASE,
 )
 _SECRET_NAME_RE = re.compile(
@@ -37,9 +43,39 @@ _STRING_LITERAL_RE = re.compile(r"(?P<quote>['\"])(?P<value>(?:\\.|(?!\1).)*)(?P
 _ASSIGNMENT_RE = re.compile(
     r"(?:\b(?:const|let|var)\s+)?\b(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?P<rhs>.+)"
 )
+# Language-agnostic query/exec operations. Keep this list NARROW: every verb
+# here is accepted as "this line is a query operation" in every language, so a
+# generic word admits exactly the candidates the gate exists to reject.
+_SHARED_SINK_VERBS = (
+    r"execute|executemany|query|raw|extra|system|exec|execSync|spawn|popen|"
+    r"run|call|check_output|render_template_string"
+)
+
+# C#/.NET-only verbs. These are far too generic to apply universally: under
+# IGNORECASE, Write/Parse/Start/Search/Find/Log* match ordinary Python and JS
+# calls such as `f.write(user + "\n")`, which let a hallucinated injection
+# finding anchored on a benign line satisfy the query-operation precondition.
+_CSHARP_SINK_VERBS = (
+    r"ExecuteReader(?:Async)?|ExecuteNonQuery(?:Async)?|ExecuteScalar(?:Async)?|"
+    r"FromSqlRaw|ExecuteSqlRaw(?:Async)?|SqlQueryRaw|"
+    # ADO.NET carries the statement in the command's FIRST constructor argument
+    # (new SqlCommand(sql, connection)), which is the most common shape of C#
+    # SQL injection. Without these the gate saw no query operation on the sink
+    # line and rejected real findings as sink_not_query_operation.
+    r"(?:Sql|Npgsql|MySql|Sqlite|Oracle|OleDb|Odbc)(?:Command|DataAdapter)|"
+    r"Start|EvaluateAsync|RunAsync|Parse|RenderAsync?|Search|FindAll?|"
+    r"SelectNodes?|SelectSingleNode|LoadXml|Write|WriteLine|"
+    r"Log(?:Trace|Debug|Information|Warning|Error|Critical)"
+)
+
 _INJECTION_SINK_RE = re.compile(
-    r"\b(?:execute|executemany|query|raw|extra|system|exec|execSync|spawn|popen|"
-    r"run|call|check_output)\s*\(",
+    rf"\b(?:{_SHARED_SINK_VERBS})(?:<[^>]+>)?\s*\(",
+    re.IGNORECASE,
+)
+
+_CSHARP_INJECTION_SINK_RE = re.compile(
+    rf"\b(?:{_SHARED_SINK_VERBS}|{_CSHARP_SINK_VERBS})(?:<[^>]+>)?\s*\("
+    r"|\b(?:CommandText|Arguments|Filter)\s*=",
     re.IGNORECASE,
 )
 _NOSQL_SINK_RE = re.compile(
@@ -53,6 +89,34 @@ _COERCION_RE = re.compile(
 )
 _INTERPOLATION_RE = re.compile(r"(?:\$\{[^}]+\}|\{[^}]+\})")
 
+_NON_EXECUTED_NODE_TYPES = {
+    "comment", "line_comment", "block_comment", "razor_comment",
+    "string_literal", "string_literal_content", "verbatim_string_literal",
+    "verbatim_string_literal_content", "raw_string_literal",
+    "raw_string_literal_content", "interpolated_string_text",
+    "text", "raw_text",
+}
+
+# String-literal node kinds, split out of _NON_EXECUTED_NODE_TYPES because they
+# get a second question asked of them: is this literal an argument to a call
+# that actually runs? Comments never get that reprieve.
+_STRING_NODE_TYPES = {
+    "string_literal", "string_literal_content", "verbatim_string_literal",
+    "verbatim_string_literal_content", "raw_string_literal",
+    "raw_string_literal_content", "interpolated_string_text",
+}
+
+# Nodes that mean "a call happens here", across the four grammars in use.
+_INVOCATION_NODE_TYPES = {
+    "invocation_expression", "object_creation_expression", "argument", "argument_list",
+    "call_expression", "call", "new_expression", "arguments",
+}
+
+_PARSER_NAMES = {
+    "python": "python", "javascript": "javascript", "typescript": "tsx",
+    "csharp": "csharp", "razor": "razor",
+}
+
 # How far from its claimed line the evidence text may actually sit. Sized from
 # observed off-by-two drift, where the model pointed at a comment header
 # immediately above the code it meant, plus margin for a decorator or a wrapped
@@ -65,10 +129,17 @@ _EVIDENCE_LINE_TOLERANCE = 5
 class ApplicabilityDecision:
     accepted: bool
     reason: str | None = None
+    # The evidence locations as actually FOUND in the file. The model's claimed
+    # line drifts, and _line_at recomputes it from where the text really sits.
+    # Downstream must carry these rather than the claim, because the judge is
+    # told these lines were deterministically verified — passing the unverified
+    # claim would make that statement false.
+    resolved_source: EvidenceLocation | None = None
+    resolved_sink: EvidenceLocation | None = None
 
 
 Predicate = Callable[
-    [CandidateFinding, list[str], ReviewWindow, RetrievedRule], str | None
+    [CandidateFinding, list[str], ReviewWindow, RetrievedRule, str | None], str | None
 ]
 
 
@@ -125,6 +196,7 @@ def _tls_disabled(
     lines: list[str],
     window: ReviewWindow,
     _rule: RetrievedRule,
+    _grammar: str | None = None,
 ) -> str | None:
     assert candidate.sink is not None
     if not _TLS_DISABLED_RE.search(lines[candidate.sink.line - 1]):
@@ -137,6 +209,7 @@ def _hardcoded_secret(
     lines: list[str],
     window: ReviewWindow,
     _rule: RetrievedRule,
+    _grammar: str | None = None,
 ) -> str | None:
     assert candidate.sink is not None
     sink_line = lines[candidate.sink.line - 1]
@@ -144,10 +217,233 @@ def _hardcoded_secret(
         return "applicability_hardcoded_secret_is_environment_read"
     if not _SECRET_NAME_RE.search(sink_line):
         return "applicability_hardcoded_secret_literal_missing"
-    literals = [match.group("value") for match in _STRING_LITERAL_RE.finditer(sink_line)]
+    literals = _literal_values(sink_line)
     if not any(len(value.strip()) >= 6 and any(ch.isalpha() for ch in value) for value in literals):
         return "applicability_hardcoded_secret_literal_missing"
     return None
+
+
+def _literal_values(line: str) -> list[str]:
+    """Extract ordinary, verbatim, and raw C# literals conservatively."""
+    values = [match.group("value") for match in _STRING_LITERAL_RE.finditer(line)]
+    values.extend(match.group(1) for match in re.finditer(r'@"((?:""|[^"])*)"', line))
+    values.extend(match.group(1) for match in re.finditer(r'"""+(.*?)"""+', line))
+    return values
+
+
+def _node_is_non_executed(node, grammar: str | None = None) -> bool:
+    current = node
+    ancestry: list[str] = []
+    string_literal_seen = False
+    while current is not None:
+        kind = current.type.lower()
+        ancestry.append(kind)
+        if "comment" in kind:
+            # A comment never runs, whatever encloses it.
+            return True
+        if kind in _NON_EXECUTED_NODE_TYPES:
+            if kind in _STRING_NODE_TYPES:
+                # Keep walking: a literal that is an ARGUMENT to a live call is
+                # part of executing code. deep_review.md already draws this
+                # line — "a string literal that is never passed to an execution
+                # sink is not executable ... a string that is actually passed to
+                # a query, process, template, deserializer, renderer, or other
+                # execution sink remains eligible" — and rejecting every literal
+                # wholesale contradicted it. `JS.InvokeVoidAsync("eval", value)`
+                # is the case that exposed it: the dangerous thing IS the quoted
+                # argument, and the call around it really does run.
+                #
+                # Documentation samples are unaffected. A page's own
+                # `private const string VulnerableCode = """..."""` has a
+                # declaration above it, not an invocation, so it stays rejected.
+                string_literal_seen = True
+            else:
+                return True
+        current = current.parent
+    if string_literal_seen:
+        return not any(kind in _INVOCATION_NODE_TYPES for kind in ancestry)
+    if grammar == "razor" and "element" in ancestry:
+        # Plain text inside an HTML element is displayed sample content. Real
+        # Razor/C# execution has a razor expression/block or C# invocation node
+        # between the byte range and the element ancestor.
+        return not any(
+            kind.startswith("razor_") or kind in {"invocation_expression", "assignment_expression"}
+            for kind in ancestry
+        )
+    return False
+
+
+_RAZOR_COMMENT_RE = re.compile(r"@\*.*?\*@", re.DOTALL)
+_RAZOR_CODE_BLOCK_RE = re.compile(r"^[ \t]*@(?:code|functions)\b[^{]*\{", re.MULTILINE)
+
+
+def _csharp_block_end(source: str, open_index: int) -> int:
+    """Index just past the ``}`` closing the block whose ``{`` is at open_index.
+
+    Brace counting has to skip braces that live inside comments and string
+    literals, or a block containing ``"}"`` — or a raw-string code sample, which
+    is exactly what these blocks contain — terminates early and the rest of the
+    file is misclassified. Returns len(source) for an unterminated block, which
+    is the safe reading: the block runs to EOF.
+    """
+    i, depth, n = open_index, 0, len(source)
+    while i < n:
+        ch = source[i]
+        if ch == "/" and i + 1 < n and source[i + 1] == "/":
+            i = source.find("\n", i)
+            if i == -1:
+                return n
+            continue
+        if ch == "/" and i + 1 < n and source[i + 1] == "*":
+            end = source.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        if source.startswith('"""', i):
+            fence = len(source[i:]) - len(source[i:].lstrip('"'))
+            closing = source.find('"' * fence, i + fence)
+            i = n if closing == -1 else closing + fence
+            continue
+        if source.startswith('@"', i):
+            j = i + 2
+            while j < n:
+                if source[j] == '"':
+                    if j + 1 < n and source[j + 1] == '"':
+                        j += 2
+                        continue
+                    break
+                j += 1
+            i = j + 1
+            continue
+        if ch in "\"'":
+            j = i + 1
+            while j < n and source[j] != ch:
+                j += 2 if source[j] == "\\" else 1
+            i = j + 1
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return n
+
+
+def _razor_code_spans(source: str) -> list[tuple[int, int]]:
+    """Byte spans of every Razor ``@code``/``@functions`` body in the file.
+
+    The tree-sitter Razor grammar cannot parse a ``@code`` block that contains a
+    C# raw string literal: it yields a bare ERROR node covering the region, and
+    an ERROR ancestry carries no evidence either way about whether a byte is
+    executable. That is not a corner case in real Blazor code — in the
+    the-most-vulnerable-dotnet-app benchmark, 43 of 64 ``.razor`` files fail to
+    parse and 53 embed their own source as ``private const string ... = \"\"\"...\"\"\"``
+    documentation samples.
+
+    Treating those samples as executable would let a reviewer "find" a
+    vulnerability in a page's own printed explanation of that vulnerability. The
+    body of a ``@code`` block is plain C#, so the C# grammar — which does model
+    raw, verbatim, and interpolated string literals — is authoritative there.
+
+    Spans are bounded rather than open-ended. Taking "everything after the first
+    @code" as C# misparses markup that follows or sits between code blocks
+    (``@functions`` may appear before the markup in a .cshtml page), and would
+    let a sample in a trailing ``<pre>`` read as executable C#.
+    """
+    # A Razor comment can contain anything, including the text "@code {". Search
+    # a copy with those regions blanked out, so a commented block is not treated
+    # as real C# and its contents judged executable.
+    scannable = _RAZOR_COMMENT_RE.sub(lambda m: " " * len(m.group(0)), source)
+    spans: list[tuple[int, int]] = []
+    for match in _RAZOR_CODE_BLOCK_RE.finditer(scannable):
+        open_index = source.rindex("{", match.start(), match.end())
+        end_index = _csharp_block_end(source, open_index)
+        spans.append(
+            (
+                len(source[: match.end()].encode("utf-8")),
+                len(source[:end_index].encode("utf-8")),
+            )
+        )
+    return spans
+
+
+def _enclosing_span(spans: list[tuple[int, int]], start: int, end: int) -> tuple[int, int] | None:
+    """The code-block span wholly containing [start, end), if any.
+
+    Requiring containment of the WHOLE fragment matters: a fragment that begins
+    in markup and runs into a code block must not be judged by the C# tree, and
+    one that starts inside a block must not escape it.
+    """
+    for span_start, span_end in spans:
+        if start >= span_start and end <= span_end:
+            return (span_start, span_end)
+    return None
+
+
+def _resolve_node(tree, byte_start: int, byte_end: int):
+    return tree.root_node.descendant_for_byte_range(byte_start, max(byte_start, byte_end - 1))
+
+
+def _sink_is_executable(
+    candidate: CandidateFinding,
+    source: str,
+    grammar: str | None,
+    rule: RetrievedRule,
+) -> bool:
+    """Reject operations that appear only as comments, markup, or sample strings."""
+    assert candidate.sink is not None
+    lines = source.split("\n")
+    line = lines[candidate.sink.line - 1]
+    needle = candidate.sink.text
+    starts = [m.start() for m in re.finditer(re.escape(needle), line)]
+    if not starts:
+        return False
+
+    syntax = grammar
+    if syntax is None:
+        syntax = next((lang for lang in rule.languages if lang != "any"), None)
+    parser_name = _PARSER_NAMES.get(syntax or "")
+    if parser_name is None:
+        return not line.lstrip().startswith(("#", "//", "/*", "*", "@*"))
+    try:
+        tree = get_parser(parser_name).parse(source.encode("utf-8"))
+    except Exception:
+        return not line.lstrip().startswith(("#", "//", "/*", "*", "@*"))
+
+    # A Razor @code body is C#. Evaluate fragments inside one with the C#
+    # grammar, which models raw/verbatim/interpolated literals; markup outside
+    # every block stays with the Razor tree.
+    source_bytes = source.encode("utf-8")
+    code_spans = _razor_code_spans(source) if syntax == "razor" else []
+    csharp_trees: dict[int, object] = {}
+
+    prefix = "\n".join(lines[: candidate.sink.line - 1])
+    line_byte_base = len(prefix.encode("utf-8")) + (1 if candidate.sink.line > 1 else 0)
+    for char_start in starts:
+        byte_start = line_byte_base + len(line[:char_start].encode("utf-8"))
+        byte_end = byte_start + len(needle.encode("utf-8"))
+        span = _enclosing_span(code_spans, byte_start, byte_end)
+        if span is not None:
+            span_start, span_end = span
+            if span_start not in csharp_trees:
+                try:
+                    csharp_trees[span_start] = get_parser("csharp").parse(
+                        source_bytes[span_start:span_end]
+                    )
+                except Exception:
+                    csharp_trees[span_start] = None
+            code_tree = csharp_trees[span_start]
+            if code_tree is None:
+                continue
+            node = _resolve_node(code_tree, byte_start - span_start, byte_end - span_start)
+            if node is not None and not _node_is_non_executed(node, "csharp"):
+                return True
+            continue
+        node = _resolve_node(tree, byte_start, byte_end)
+        if node is not None and not _node_is_non_executed(node, syntax):
+            return True
+    return False
 
 
 def _contains_taint(text: str, taints: set[str]) -> bool:
@@ -159,11 +455,130 @@ def _contains_taint(text: str, taints: set[str]) -> bool:
     return False
 
 
-def _first_call_argument(line: str) -> str:
+def _mask_non_code(
+    line: str, in_block_comment: bool = False, grammar: str | None = None
+) -> tuple[str, bool]:
+    """Blank out comment and string spans, preserving length and indices.
+
+    Returns the masked line and whether it ends still inside a block comment, so
+    a caller can carry that state down a window. Without it the lexer only sees
+    one line and cannot know a `/*` opened above, which lets a commented sink be
+    picked as the query operation for a call that is properly parameterised.
+
+    Used only to LOCATE the operation, never to read its argument: recognising
+    query-text construction depends on seeing the quotes, so the argument is
+    still taken from the original text.
+
+    Template literals are masked but their `${...}` holes are NOT. The
+    interpolations are executable code and routinely contain the sink itself
+    (`` `${db.query(tainted)}` ``); masking them would make a real finding
+    unlocatable and turn this hardening into a source of false negatives.
+
+    Comment syntax is per-language and MUST NOT be applied universally. `#`
+    opens a comment in Python but is an ES2022 private field in JS/TS
+    (`this.#pool.query(...)`) and a preprocessor directive in C#; masking from
+    it unconditionally blanked real sinks. Python has no block comments at all,
+    so `/*` there is ordinary text — treating it as one let a `/*` inside a
+    docstring latch comment mode on and mute every sink below it in the file.
+    """
+    hash_comments = grammar == "python"
+    # C# `#if`/`#region` are directives, and only ever at the start of a line.
+    hash_directives = grammar in ("csharp", "razor")
+    slash_comments = grammar in ("javascript", "typescript", "csharp", "razor")
+    # An unknown grammar masks quotes only. Guessing wrong suppresses a real
+    # sink and reports the file clean; declining to guess can at worst let a
+    # commented-out sink through to the judge, which is the recoverable error.
+    out = list(line)
+    i, n = 0, len(line)
+    if in_block_comment and slash_comments:
+        end = line.find("*/")
+        stop = n if end == -1 else end + 2
+        for j in range(stop):
+            out[j] = " "
+        if end == -1:
+            return "".join(out), True
+        i = stop
+    while i < n:
+        ch = line[i]
+        starts_hash = ch == "#" and (
+            hash_comments or (hash_directives and not line[:i].strip())
+        )
+        starts_slash = (
+            slash_comments and ch == "/" and i + 1 < n and line[i + 1] in "/*"
+        )
+        if starts_hash or starts_slash:
+            if starts_slash and line[i + 1] == "*":
+                end = line.find("*/", i + 2)
+                if end == -1:
+                    for j in range(i, n):
+                        out[j] = " "
+                    return "".join(out), True
+                stop = end + 2
+            else:
+                stop = n
+            for j in range(i, stop):
+                out[j] = " "
+            i = stop
+            continue
+        if ch == "`":
+            j = i + 1
+            out[i] = " "
+            while j < n and line[j] != "`":
+                if line[j] == "$" and j + 1 < n and line[j + 1] == "{":
+                    depth, k = 0, j
+                    while k < n:
+                        if line[k] == "{":
+                            depth += 1
+                        elif line[k] == "}":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        k += 1
+                    j = k + 1  # leave the interpolation intact
+                    continue
+                out[j] = " "
+                j += 2 if line[j] == "\\" else 1
+            if j < n:
+                out[j] = " "
+            i = j + 1
+            continue
+        if ch in "\"'":
+            j = i + 1
+            while j < n and line[j] != ch:
+                j += 2 if line[j] == "\\" else 1
+            for k in range(i, min(j + 1, n)):
+                out[k] = " "
+            i = j + 1
+            continue
+        i += 1
+    return "".join(out), False
+
+
+def _block_comment_open_at(
+    lines: list[str], line_number: int, grammar: str | None = None
+) -> bool:
+    """Whether line_number (1-indexed) begins inside a /* ... */ comment."""
+    state = False
+    for line in lines[: line_number - 1]:
+        _, state = _mask_non_code(line, state, grammar)
+    return state
+
+
+def _first_call_argument(
+    line: str, in_block_comment: bool = False, grammar: str | None = None
+) -> str:
     """Return a conservative first call argument, respecting quotes/nesting."""
-    match = _INJECTION_SINK_RE.search(line)
+    masked, _ = _mask_non_code(line, in_block_comment, grammar)
+    sink_re = (
+        _CSHARP_INJECTION_SINK_RE
+        if grammar in ("csharp", "razor")
+        else _INJECTION_SINK_RE
+    )
+    match = sink_re.search(masked)
     if match is None:
         return ""
+    if "=" in match.group(0) and "(" not in match.group(0):
+        return line[match.end():]
     start = match.end()
     depth = 0
     quote: str | None = None
@@ -209,6 +624,7 @@ def _injection_text_flow(
     lines: list[str],
     window: ReviewWindow,
     _rule: RetrievedRule,
+    grammar: str | None = None,
 ) -> str | None:
     assert candidate.untrusted_source is not None and candidate.sink is not None
     source = candidate.untrusted_source
@@ -232,7 +648,9 @@ def _injection_text_flow(
                 text_tainted.add(name)
 
     sink_line = lines[sink.line - 1]
-    first_arg = _first_call_argument(sink_line)
+    first_arg = _first_call_argument(
+        sink_line, _block_comment_open_at(lines, sink.line, grammar), grammar
+    )
     if not first_arg:
         return "applicability_injection_sink_not_query_operation"
     if _is_text_construction(first_arg, taints):
@@ -256,6 +674,7 @@ def _nosql_query_flow(
     lines: list[str],
     window: ReviewWindow,
     _rule: RetrievedRule,
+    _grammar: str | None = None,
 ) -> str | None:
     """Require direct untrusted data in a NoSQL query object.
 
@@ -297,6 +716,7 @@ _SINK_ONLY_CWES: frozenset[str] = frozenset(
     {
         "CWE-208",
         "CWE-295",
+        "CWE-326",
         "CWE-327",
         "CWE-330",
         "CWE-338",
@@ -315,6 +735,13 @@ _CWE_PREDICATES: dict[str, Predicate] = {
     "CWE-798": _hardcoded_secret,
     "CWE-78": _injection_text_flow,
     "CWE-89": _injection_text_flow,
+    "CWE-90": _injection_text_flow,
+    "CWE-91": _injection_text_flow,
+    "CWE-94": _injection_text_flow,
+    "CWE-117": _injection_text_flow,
+    "CWE-643": _injection_text_flow,
+    "CWE-917": _injection_text_flow,
+    "CWE-1336": _injection_text_flow,
     "CWE-943": _nosql_query_flow,
 }
 
@@ -345,6 +772,7 @@ def validate_applicability(
     source: str,
     window: ReviewWindow,
     rule: RetrievedRule,
+    grammar: str | None = None,
 ) -> ApplicabilityDecision:
     """Verify evidence locations and mechanically decidable rule preconditions.
 
@@ -377,6 +805,10 @@ def validate_applicability(
         return _reject(reason)
     assert resolved_sink is not None
 
+    executable_candidate = candidate.model_copy(update={"sink": resolved_sink})
+    if not _sink_is_executable(executable_candidate, source, grammar, rule):
+        return _reject("applicability_sink_not_executable_code")
+
     if access_control and not (
         candidate.auth_missing_enforcement_reason
         and candidate.auth_missing_enforcement_reason.strip()
@@ -388,10 +820,14 @@ def validate_applicability(
         update={"untrusted_source": resolved_source, "sink": resolved_sink}
     )
     for predicate in predicates:
-        reason = predicate(resolved_candidate, lines, window, rule)
+        reason = predicate(resolved_candidate, lines, window, rule, grammar)
         if reason is not None:
             return _reject(reason)
-    return ApplicabilityDecision(accepted=True)
+    return ApplicabilityDecision(
+        accepted=True,
+        resolved_source=resolved_source,
+        resolved_sink=resolved_sink,
+    )
 
 
 def mark_applicability_rejection(

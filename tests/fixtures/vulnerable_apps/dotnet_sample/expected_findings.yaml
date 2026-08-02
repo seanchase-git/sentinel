@@ -1,0 +1,74 @@
+# Smoke fixture for .NET (C# / Razor / cshtml) ingestion and review.
+# Schema matches the other fixture apps so this app joins the parametrized
+# end-to-end gate in tests/integration/test_e2e_review.py.
+#
+# FIXTURE DISCIPLINE — every entry below is provable FROM THE FILE ITSELF: the
+# untrusted source and the sink both appear in the same review window. Sentinel's
+# applicability gate (src/sentinel/graph/evidence.py) refuses to certify a taint
+# finding whose source it cannot locate.
+#
+# The first revision of this fixture violated that rule: Danger.razor initialised
+# untrustedHtml and script to "" — untainted literals with no request-bound
+# source anywhere in the file — and Views/Profile.cshtml rendered a view-model
+# property whose provenance was off-file. The pipeline correctly emitted ZERO
+# findings on it, rejecting the Razor candidate with
+# applicability_missing_untrusted_source. That was the gate working, not a miss.
+# The fixture was rewritten to carry real request-bound sources.
+#
+# Each vulnerable pattern is paired with a secure counterpart in the same file,
+# so the fixture measures discrimination rather than raw recall.
+#
+# UNSTABLE ENTRIES
+#   An entry marked `unstable: true` is a real defect the pipeline detects only
+#   some of the time. A miss is reported as a warning instead of failing the
+#   gate, so a known-variable case cannot mask a genuine regression in the
+#   entries that ARE reliable. The bar is not lowered: the entry stays in this
+#   file at its exact location, and the flakiness is documented in
+#   docs/architecture.md instead of being quietly dropped.
+expected:
+  # $"...{name}..." interpolated straight into SqlCommand text.
+  # Secure counterpart: SafeSearch() at lines 17-25 uses @name + AddWithValue.
+  - file: Controllers/UsersController.cs
+    rule_ids: [cwe-89-sql-injection-csharp]
+    min_severity: high
+    line_start: 11
+    line_end: 13
+    unstable: true
+    unstable_reason: >
+      Detected in some runs and not others. The failure is transcription, not
+      reasoning: deep review rewrites the C# interpolated string
+      $"... WHERE Name = '{name}'" into a concatenation of quoted parts and
+      variables. That rewritten text does not appear in the file, so the
+      verbatim snippet and sink checks correctly discard an otherwise correct
+      finding. Sharpening the prompt made it pass once and it regressed on the
+      next run — llama.cpp's documented run-to-run nondeterminism, not a fixed
+      defect.
+
+  # [SupplyParameterFromQuery] value cast to MarkupString, bypassing Blazor's
+  # automatic encoding. Secure counterpart: @encodedValue on line 4.
+  - file: Pages/Danger.razor
+    rule_ids: [cwe-79-aspnetcore-raw-rendering]
+    min_severity: high
+    line_start: 5
+    line_end: 5
+
+  # Query-string value passed to JS eval through IJSRuntime interop.
+  - file: Pages/Danger.razor
+    rule_ids: [cwe-79-blazor-unsafe-js-interop]
+    min_severity: high
+    line_start: 20
+    line_end: 20
+
+  # Request query value rendered with Html.Raw. Secure counterparts:
+  # @Model.DisplayName (line 6) and @Model.LastSeen (line 10) are auto-encoded.
+  - file: Views/Profile.cshtml
+    rule_ids: [cwe-79-aspnetcore-raw-rendering]
+    min_severity: high
+    line_start: 8
+    line_end: 8
+
+# Pure negative control: environment-read secret, canonicalised path check, real
+# certificate validation, CSPRNG token. Every construct here is the secure form
+# of a rule in the C# corpus, so a finding in this file is a false positive.
+clean_files:
+  - SecurityControls.cs

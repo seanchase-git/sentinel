@@ -1,0 +1,25 @@
+id: cwe-502-binaryformatter-csharp
+taxonomy:
+  - owasp: A08:2021
+  - cwe: CWE-502
+title: BinaryFormatter Deserialization
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  BinaryFormatter and related unrestricted object-graph serializers are unsafe
+  for data processing and can instantiate dangerous types during deserialization.
+detection_criteria: |
+  Flag external or attacker-accessible stream data passed to BinaryFormatter.Deserialize,
+  SoapFormatter, NetDataContractSerializer, LosFormatter, or ObjectStateFormatter.
+  In .NET 9+ BinaryFormatter throws by default, but source that enables or targets
+  an older runtime remains hazardous; use a constrained data serializer.
+example_vulnerable: |
+  var value = new BinaryFormatter().Deserialize(request.Body);
+example_secure: |
+  var value = await JsonSerializer.DeserializeAsync<UploadRequest>(request.Body);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
+    title: Microsoft BinaryFormatter Security Guide
+  - url: https://cwe.mitre.org/data/definitions/502.html
+    title: CWE-502 Deserialization of Untrusted Data

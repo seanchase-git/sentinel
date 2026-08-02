@@ -10,13 +10,23 @@ RiskCategory = Literal[
 ]
 
 
+# Human-readable names for the Llama Guard category codes Sentinel reports on.
+# Lives with the DTO so the report layer can render a code without importing a
+# node module.
+GUARD_CATEGORY_LABELS: dict[str, str] = {"S14": "Code Interpreter Abuse"}
+
+
 class GuardrailResult(BaseModel):
     safe: bool
     category: str | None = None
+    # Categories that were flagged but are not grounds to refuse the file. The
+    # file WAS reviewed; these ride along so the report can say what tripped and
+    # a human can decide. Empty for every blocking verdict.
+    advisories: list[str] = Field(default_factory=list)
 
 
 class Classification(BaseModel):
-    language: Literal["python", "javascript", "typescript"]
+    language: Literal["python", "javascript", "typescript", "csharp"]
     framework: str | None = None
     risk_categories: list[RiskCategory] = Field(default_factory=list)
 

@@ -1,0 +1,28 @@
+id: cwe-611-xml-external-entities-csharp
+taxonomy:
+  - owasp: A05:2021
+  - cwe: CWE-611
+title: Unsafe DTD or External Entity Processing in .NET
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Parsing untrusted XML with DTD processing and a non-null resolver can read local
+  files, reach network resources, or expand malicious entities.
+detection_criteria: |
+  Flag external XML parsed where DtdProcessing.Parse is enabled, XmlResolver is
+  non-null or XmlUrlResolver is assigned, or MaxCharactersFromEntities is left
+  unbounded in an explicitly DTD-enabled path. Prohibit/Ignore plus null resolver is safe.
+example_vulnerable: |
+  var settings = new XmlReaderSettings {
+      DtdProcessing = DtdProcessing.Parse, XmlResolver = new XmlUrlResolver()
+  };
+example_secure: |
+  var settings = new XmlReaderSettings {
+      DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null
+  };
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/data/xml/xmlresolver-security
+    title: Microsoft XmlResolver Security
+  - url: https://cwe.mitre.org/data/definitions/611.html
+    title: CWE-611 XML External Entities

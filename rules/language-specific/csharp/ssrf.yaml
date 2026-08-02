@@ -1,0 +1,25 @@
+id: cwe-918-ssrf-csharp
+taxonomy:
+  - owasp: A10:2021
+  - cwe: CWE-918
+title: SSRF through .NET Outbound Request
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Fetching a caller-controlled URI lets the caller make the server reach internal,
+  loopback, link-local, metadata, file, or otherwise privileged destinations.
+detection_criteria: |
+  Flag external URLs passed to HttpClient, WebRequest, DownloadString, or other
+  outbound clients without strict scheme/host allowlisting, resolved-IP checks,
+  redirect controls, and revalidation. A string-format or prefix check is insufficient.
+example_vulnerable: |
+  var response = await httpClient.GetAsync(request.Url);
+example_secure: |
+  var uri = await approvedDestinations.ResolveAndValidateAsync(request.Url);
+  var response = await pinnedClient.GetAsync(uri);
+references:
+  - url: https://cwe.mitre.org/data/definitions/918.html
+    title: CWE-918 Server-Side Request Forgery
+  - url: https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/
+    title: OWASP A10 Server-Side Request Forgery

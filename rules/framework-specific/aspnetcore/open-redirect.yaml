@@ -1,0 +1,25 @@
+id: cwe-601-aspnetcore-open-redirect
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-601
+title: Unvalidated Redirect in ASP.NET Core
+severity: medium
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Redirecting to a request-controlled URL without local-URL validation can send
+  users to a phishing or credential-capture destination.
+detection_criteria: |
+  Flag route, query, form, or header values passed to Redirect, Results.Redirect,
+  Response.Redirect, or NavigationManager.NavigateTo with external navigation
+  enabled and no Url.IsLocalUrl validation. LocalRedirect is the preferred control.
+example_vulnerable: |
+  return Redirect(request.ReturnUrl);
+example_secure: |
+  return Url.IsLocalUrl(request.ReturnUrl)
+      ? LocalRedirect(request.ReturnUrl) : RedirectToAction("Index", "Home");
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/preventing-open-redirects
+    title: Microsoft Prevent Open Redirect Attacks
+  - url: https://cwe.mitre.org/data/definitions/601.html
+    title: CWE-601 Open Redirect

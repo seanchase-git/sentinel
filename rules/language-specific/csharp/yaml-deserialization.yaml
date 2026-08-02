@@ -1,0 +1,24 @@
+id: cwe-502-yamldotnet-deserialization-csharp
+taxonomy:
+  - owasp: A08:2021
+  - cwe: CWE-502
+title: Unsafe YamlDotNet Type Resolution
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Deserializing attacker-controlled YAML with permissive tags or runtime type
+  resolution can construct types outside the intended data model.
+detection_criteria: |
+  Flag untrusted YAML deserialized to object/dynamic or with tag mappings, custom
+  type resolvers, or type converters that permit arbitrary runtime types. A fixed
+  sealed DTO plus rejection of unapproved tags is the control.
+example_vulnerable: |
+  var value = deserializer.Deserialize<object>(request.Yaml);
+example_secure: |
+  var value = safeDeserializer.Deserialize<DeploymentConfig>(request.Yaml);
+references:
+  - url: https://github.com/aaubry/YamlDotNet/wiki/Serialization.Deserializer
+    title: YamlDotNet Deserializer Documentation
+  - url: https://cwe.mitre.org/data/definitions/502.html
+    title: CWE-502 Deserialization of Untrusted Data

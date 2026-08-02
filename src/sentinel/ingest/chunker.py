@@ -20,7 +20,13 @@ WINDOW_TOKEN_BUDGET = 8_000
 FALLBACK_WINDOW_LINES = 80
 FALLBACK_OVERLAP_LINES = 15
 
-_TS_LANGUAGE = {"python": "python", "javascript": "javascript", "typescript": "tsx"}
+_TS_LANGUAGE = {
+    "python": "python",
+    "javascript": "javascript",
+    "typescript": "tsx",
+    "csharp": "csharp",
+    "razor": "razor",
+}
 
 _TOP_LEVEL_NODES = {
     "python": {"function_definition", "class_definition", "decorated_definition"},
@@ -35,7 +41,64 @@ _TOP_LEVEL_NODES = {
         "expression_statement", "interface_declaration", "type_alias_declaration",
         "enum_declaration", "module", "ambient_declaration",
     },
+    "csharp": {
+        "class_declaration", "struct_declaration", "interface_declaration",
+        "record_declaration", "enum_declaration", "delegate_declaration",
+        "method_declaration", "constructor_declaration", "property_declaration",
+        "indexer_declaration", "operator_declaration", "destructor_declaration",
+        "field_declaration", "event_declaration",
+    },
+    "razor": {
+        "razor_block", "razor_explicit_expression", "razor_implicit_expression",
+        "razor_code_directive", "razor_functions_directive", "element",
+        "script_element", "style_element",
+    },
 }
+
+_CSHARP_CONTAINER_NODES = {
+    "compilation_unit", "namespace_declaration", "file_scoped_namespace_declaration",
+    "class_declaration", "struct_declaration", "interface_declaration",
+    "record_declaration",
+}
+
+
+def _csharp_declaration_ranges(root) -> list[tuple[int, int]]:
+    """Return non-overlapping member/declaration ranges for C# source.
+
+    Controller methods are the useful review unit. Treating the outer class as
+    one declaration hides those boundaries, so containers are traversed until
+    their direct members are reached; types without members remain chunks.
+    """
+    ranges: list[tuple[int, int]] = []
+
+    def visit(node) -> None:
+        declaration_list = next(
+            (child for child in node.named_children if child.type == "declaration_list"),
+            None,
+        )
+        if node.type in _CSHARP_CONTAINER_NODES and declaration_list is not None:
+            members = [
+                child for child in declaration_list.named_children
+                if child.type in _TOP_LEVEL_NODES["csharp"]
+            ]
+            if members:
+                for member in members:
+                    if member.type in _CSHARP_CONTAINER_NODES:
+                        before = len(ranges)
+                        visit(member)
+                        if len(ranges) == before:
+                            ranges.append((member.start_point[0], member.end_point[0]))
+                    else:
+                        ranges.append((member.start_point[0], member.end_point[0]))
+                return
+        for child in node.named_children:
+            if child.type in _CSHARP_CONTAINER_NODES:
+                visit(child)
+            elif child.type in _TOP_LEVEL_NODES["csharp"]:
+                ranges.append((child.start_point[0], child.end_point[0]))
+
+    visit(root)
+    return sorted(set(ranges))
 
 
 @dataclass
@@ -124,13 +187,14 @@ def _split_oversized(chunk: CodeChunk, budget_tokens: int) -> list[CodeChunk]:
     return pieces or [chunk]
 
 
-def chunk_file(source: str, language: str) -> list[CodeChunk]:
+def chunk_file(source: str, language: str, grammar: str | None = None) -> list[CodeChunk]:
     """Chunk source text by top-level AST boundaries with fallback."""
     lines = source.split("\n")
     if not source.strip():
         return []
     try:
-        parser = get_parser(_TS_LANGUAGE[language])
+        syntax = grammar or language
+        parser = get_parser(_TS_LANGUAGE[syntax])
         tree = parser.parse(source.encode("utf-8"))
         root = tree.root_node
     except Exception:
@@ -142,14 +206,29 @@ def chunk_file(source: str, language: str) -> list[CodeChunk]:
     # boundaries. Gaps between definitions (imports, loose statements,
     # blank lines) become module segments — every chunk's text is an exact
     # slice of the source, so start/end lines always reproduce the text.
-    top_level = _TOP_LEVEL_NODES[language]
+    syntax = grammar or language
+    top_level = _TOP_LEVEL_NODES[syntax]
     def_ranges: list[tuple[int, int]] = []  # 0-indexed rows, inclusive
-    for node in root.children:
-        start_row, end_row = node.start_point[0], node.end_point[0]
-        if node.type in top_level and (end_row - start_row) >= 1:
-            if def_ranges and start_row <= def_ranges[-1][1]:
-                continue  # overlapping (e.g. decorated) — keep the first
-            def_ranges.append((start_row, end_row))
+    if syntax == "csharp":
+        candidates = _csharp_declaration_ranges(root)
+    else:
+        # A single-line top-level statement is not a useful review unit. Without
+        # this floor every `const x = require(...)` line became its own chunk,
+        # and because the re-merge below requires strict line adjacency, blank
+        # lines between them stopped them ever merging back — one embedding and
+        # one pgvector query each, and 20 rules apiece crowding the window's
+        # top-K away from the chunk that holds the vulnerable code.
+        min_span = 0 if syntax == "razor" else 1
+        candidates = [
+            (node.start_point[0], node.end_point[0])
+            for node in root.children
+            if node.type in top_level
+            and node.end_point[0] - node.start_point[0] >= min_span
+        ]
+    for start_row, end_row in candidates:
+        if def_ranges and start_row <= def_ranges[-1][1]:
+            continue  # overlapping parsed regions — keep the first
+        def_ranges.append((start_row, end_row))
 
     segments: list[tuple[int, int]] = []
     cursor = 0

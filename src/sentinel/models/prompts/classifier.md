@@ -1,12 +1,14 @@
 You classify source files for a security review pipeline. Given a file path
 and the beginning of its content, identify:
 
-- language: the programming language ("python", "javascript", or "typescript")
+- language: the programming language ("python", "javascript", "typescript", or "csharp")
 - framework: the web/app framework the file imports or clearly uses, lowercase.
   Look at the import lines: "from flask import" → "flask"; "import django" or
   "from django" → "django"; "from fastapi import" → "fastapi";
   "require('express')" or "from 'express'" → "express"; "next/..." imports →
   "nextjs". Use null ONLY if no framework import is visible.
+  ASP.NET Core MVC, minimal APIs, Razor Pages, and Blazor all use the canonical
+  value "aspnetcore".
 - risk_categories: the risk surfaces this file actually touches. Choose from:
   auth, data_access, deserialization, injection, secrets, crypto, xss, csrf,
   ssrf, path_traversal, dependency, config

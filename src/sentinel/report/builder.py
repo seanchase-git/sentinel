@@ -5,6 +5,7 @@ from typing import Any
 
 from sentinel import __version__
 from sentinel.graph.runner import RunResult
+from sentinel.graph.schemas import GUARD_CATEGORY_LABELS
 from sentinel.models.registry import load_registry
 from sentinel.settings import JUDGE_THRESHOLD, TOP_K_RULES
 
@@ -32,6 +33,7 @@ def build_report(
     findings: list[dict] = []
     suppressed: list[dict] = []
     rejected_inputs: list[dict] = []
+    input_warnings: list[dict] = []
     per_file: list[dict] = []
 
     for record in run.file_results:
@@ -40,13 +42,31 @@ def build_report(
         suppressed.extend(
             {**s, "file_path": record["file_path"]} for s in record.get("suppressed", [])
         )
+        guard = record.get("guardrail") or {}
         if record.get("status") == "blocked_unsafe":
-            guard = record.get("guardrail") or {}
             rejected_inputs.append(
                 {
                     "file_path": record["file_path"],
                     "category": guard.get("category"),
                     "note": "input rejected by guardrail; file was not reviewed",
+                }
+            )
+        # An advisory is the opposite of a rejection: the guardrail objected, the
+        # objection was judged not to be grounds for refusing source code, and
+        # the file was reviewed normally. Reported so that decision is visible
+        # rather than silently applied.
+        for category in guard.get("advisories") or []:
+            label = GUARD_CATEGORY_LABELS.get(category, category)
+            input_warnings.append(
+                {
+                    "file_path": record["file_path"],
+                    "category": category,
+                    "label": label,
+                    "note": (
+                        f"guardrail flagged {category} ({label}); reviewing code that "
+                        "abuses interpreters is this tool's purpose, so the file was "
+                        "reviewed. Confirm the construct is intended."
+                    ),
                 }
             )
         per_file.append(
@@ -57,6 +77,7 @@ def build_report(
                 "classification": record.get("classification"),
                 "triage": record.get("triage"),
                 "windows": record.get("windows", []),
+                "guardrail_advisories": guard.get("advisories") or [],
                 "finding_count": len(file_findings),
             }
         )
@@ -114,6 +135,7 @@ def build_report(
             "suppressed_candidates": len(suppressed),
             "judge_unavailable": len(unadjudicated),
             "rejected_inputs": len(rejected_inputs),
+            "input_warnings": len(input_warnings),
             # False whenever this run cannot account for the whole target: a
             # candidate never got a verdict, OR a file never finished review.
             # Both mean `findings` is an undercount, and a consumer reading
@@ -124,5 +146,6 @@ def build_report(
         "suppressed_candidates": suppressed,
         "unadjudicated_candidates": unadjudicated,
         "rejected_inputs": rejected_inputs,
+        "input_warnings": input_warnings,
         "files": per_file,
     }

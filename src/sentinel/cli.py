@@ -170,7 +170,7 @@ def review(
         str | None,
         typer.Option(
             "--language",
-            help="Comma-separated language filter (python,javascript,typescript).",
+            help="Comma-separated language filter (python,javascript,typescript,csharp).",
         ),
     ] = None,
     severity: Annotated[
@@ -181,10 +181,20 @@ def review(
             "(e.g. 'high'); a comma list selects exactly those severities.",
         ),
     ] = None,
+    dashboard: Annotated[
+        bool | None,
+        typer.Option(
+            "--dashboard/--no-dashboard",
+            help="Open the live dashboard. Default: on for an interactive terminal, "
+            "off when output is piped or SENTINEL_DASHBOARD=0.",
+        ),
+    ] = None,
 ) -> None:
     """Review a repository and write report.json / report.md / metrics.json."""
     import asyncio
     import logging
+    import os
+    import sys
 
     from sentinel.graph.runner import review_target
     from sentinel.ingest.walker import EXTENSION_LANGUAGES, IngestError
@@ -207,6 +217,17 @@ def review(
             )
             raise typer.Exit(code=2)
 
+    # C#/Razor review is beta and its known failure mode is the silent one: a
+    # real finding discarded by the applicability gate, which reads as a clean
+    # file. Say so before the run rather than only in docs, so nobody reads an
+    # empty C# report as an all-clear. --language is the off switch.
+    if languages is None or "csharp" in languages:
+        console.print(
+            "[yellow]note[/yellow] C#/Razor review is beta — see docs/known-issues.md. "
+            "A clean C# report is not evidence of no vulnerability. "
+            "Exclude it with [dim]--language python,javascript,typescript[/dim]."
+        )
+
     severities: set[str] | None = None
     if severity:
         parts = [p.strip().lower() for p in severity.split(",") if p.strip()]
@@ -223,6 +244,24 @@ def review(
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # A review is a long silence on a terminal, so show the pipeline while it
+    # works. Never unasked-for, though: a piped or redirected run is a script or
+    # a CI job, and spawning a browser there is a surprise, not a courtesy.
+    # Explicit --dashboard overrides the sniff in both directions.
+    show_dashboard = dashboard
+    if show_dashboard is None:
+        show_dashboard = sys.stdout.isatty() and os.environ.get(
+            "SENTINEL_DASHBOARD", ""
+        ).strip().lower() not in {"0", "false", "no"}
+    if show_dashboard:
+        from sentinel.dashboard import ensure_running, open_browser
+
+        url = ensure_running(reports_dir=output)
+        if url:
+            console.print(f"[dim]dashboard[/dim] {url}")
+            if dashboard is True or sys.stdout.isatty():
+                open_browser(url)
 
     try:
         run = asyncio.run(review_target(target, languages))
@@ -264,6 +303,32 @@ def review(
     # some candidates were never adjudicated" case.
     if unadjudicated:
         raise typer.Exit(code=4)
+
+
+@app.command()
+def dashboard(
+    port: Annotated[
+        int, typer.Option("--port", help="Loopback port to serve on.")
+    ] = 8200,
+    reports: Annotated[
+        str | None,
+        typer.Option(
+            "--reports",
+            help="Directory to scan for report.json (default ./sentinel-report).",
+        ),
+    ] = None,
+) -> None:
+    """Serve the local observability dashboard: pipeline, models, runs, logs.
+
+    Read-only and loopback-only. Nothing here can start, stop, or reconfigure a
+    backend, and the bind address goes through the same air-gap check the model
+    clients use.
+    """
+    from pathlib import Path as _Path
+
+    from sentinel.dashboard import serve
+
+    serve(port=port, reports_dir=_Path(reports) if reports else None)
 
 
 @app.command()

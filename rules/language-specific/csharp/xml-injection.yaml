@@ -1,0 +1,24 @@
+id: cwe-91-xml-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-91
+title: XML Injection through String Construction
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Building XML markup with untrusted strings permits new elements, attributes,
+  or entity syntax to be inserted into the resulting document.
+detection_criteria: |
+  Flag external data concatenated or interpolated into XML text that is written,
+  returned, or parsed by LoadXml, Parse, or an XML reader. XElement, XmlWriter,
+  and XmlElement text setters are safe construction controls.
+example_vulnerable: |
+  document.LoadXml($"<user><name>{request.Name}</name></user>");
+example_secure: |
+  var document = new XDocument(new XElement("user", new XElement("name", request.Name)));
+references:
+  - url: https://cwe.mitre.org/data/definitions/91.html
+    title: CWE-91 XML Injection
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/linq/create-xml-trees
+    title: Microsoft Create XML Trees

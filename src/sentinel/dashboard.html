@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sentinel</title>
+<style>
+/* System faces only, deliberately. This page is served by a tool whose whole
+   claim is that nothing leaves the machine; fetching a font from a CDN would
+   quietly make that false. */
+:root{
+  --paper:#f5f5f1; --card:#fff; --ink:#15171c; --muted:#6f7681;
+  --line:#e7e7e1; --line2:#f0f0ea;
+  --pure:#0a7d5a;      /* deterministic: trusts no model */
+  --model:#4a56c4;     /* model-backed */
+  --drop:#b0343a;      /* rejected at a gate */
+  --warn:#9a6a08;
+  --r:14px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{--paper:#0f1013;--card:#17191e;--ink:#e8e9ec;--muted:#949aa6;
+        --line:#252830;--line2:#1e2027;
+        --pure:#3ecf9a;--model:#8b96f0;--drop:#f07075;--warn:#e0ab44;}
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;padding:0 0 56px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* ---- header ---------------------------------------------------------- */
+header{padding:26px 0 20px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.mark{font-size:19px;font-weight:640;letter-spacing:-.015em}
+.mark b{font-weight:640}
+.tag{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+header .right{margin-left:auto;display:flex;align-items:center;gap:16px;
+  font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.live{display:inline-flex;align-items:center;gap:7px}
+.beacon{width:7px;height:7px;border-radius:50%;background:var(--pure);flex:none}
+.beacon.off{background:var(--muted);opacity:.4}
+.beacon.bad{background:var(--drop)}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+.beacon.on{animation:breathe 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.beacon.on{animation:none}}
+
+/* ---- cards ----------------------------------------------------------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  margin-bottom:18px;overflow:hidden}
+.card > h2{margin:0;padding:13px 18px;font-size:11px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;
+  border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:center}
+.card > h2 .sub{text-transform:none;letter-spacing:0;font-weight:400;margin-left:auto;
+  font-size:11.5px;font-variant-numeric:tabular-nums}
+.pad{padding:18px}
+.cols{display:grid;gap:18px;grid-template-columns:1fr 1fr}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+
+/* ---- pipeline rail (the signature) ----------------------------------- */
+/* The rail reflows rather than scrolling sideways: a pipeline read left to
+   right still reads correctly wrapped, and a horizontal scrollbar hides the
+   later stages exactly when the window is small enough that you would not
+   think to look for them. Hairlines come from a 1px grid gap over a tinted
+   background, so separators stay correct in both axes however it wraps. */
+.rail{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--line2)}
+/* 8 stages, so wrap only on divisors of 8. auto-fit picks whatever fits and
+   happily leaves a single orphan on its own row, which reads as a broken
+   layout rather than a pipeline. Column counts track PIPELINE_STAGES. */
+@media (max-width:1180px){.rail{grid-template-columns:repeat(4,1fr)}}
+@media (max-width:620px){.rail{grid-template-columns:repeat(2,1fr)}}
+.stage{position:relative;padding:16px 14px 15px;background:var(--card)}
+.stage .node{font-size:12.5px;font-weight:560;letter-spacing:-.005em;
+  display:flex;align-items:center;gap:6px}
+.stage .kindbar{height:2px;border-radius:2px;margin:9px 0 10px;background:var(--line)}
+.stage.model .kindbar{background:var(--model)}
+.stage.pure  .kindbar{background:var(--pure)}
+.stage.hybrid .kindbar{background:linear-gradient(90deg,var(--model) 45%,var(--pure) 55%)}
+.stage .num{font-size:16px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stage .unit{font-size:11px;color:var(--muted)}
+.stage .note{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.35}
+.stage .tps{font-size:11px;color:var(--model);font-variant-numeric:tabular-nums;
+  margin-top:5px;font-weight:560}
+.stage.pure .tps{color:var(--pure)}
+.legend{display:flex;gap:18px;padding:11px 18px;border-top:1px solid var(--line2);
+  font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:2px;border-radius:2px;
+  margin-right:6px;vertical-align:middle}
+
+/* ---- funnel ---------------------------------------------------------- */
+.fun{display:flex;flex-direction:column;gap:2px}
+.fstep{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;
+  padding:9px 0;border-bottom:1px solid var(--line2)}
+.fstep:last-child{border-bottom:none}
+.fstep .lab{font-size:13px}
+.fstep .lab small{color:var(--muted);font-size:11.5px;display:block;margin-top:1px}
+.fstep .val{font-size:17px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.fstep.drop .val{color:var(--drop)}
+.fstep.keep .val{color:var(--pure)}
+.fbar{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:7px}
+.fbar > i{display:block;height:100%;background:var(--ink);opacity:.75}
+.fstep.drop .fbar > i{background:var(--drop)}
+.fstep.keep .fbar > i{background:var(--pure)}
+
+/* ---- tables ---------------------------------------------------------- */
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 18px;font-size:12.5px;border-bottom:1px solid var(--line2)}
+th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  font-weight:600}
+tbody tr:last-child td{border-bottom:none}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.id{font-family:var(--mono);font-size:12px}
+.dotstat{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--pure);margin-right:7px;vertical-align:middle}
+.dotstat.bad{background:var(--drop)}
+.empty{padding:20px 18px;color:var(--muted);font-size:13px}
+
+/* ---- logs ------------------------------------------------------------ */
+.logbar{display:flex;gap:9px;align-items:center;padding:11px 18px;
+  border-bottom:1px solid var(--line2);flex-wrap:wrap}
+select,button{font:inherit;font-size:12.5px;color:var(--ink);background:var(--card);
+  border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer}
+select:hover,button:hover{border-color:var(--muted)}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--model);
+  outline-offset:2px}
+pre.log{margin:0;padding:14px 18px;max-height:380px;overflow:auto;
+  font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--ink);
+  opacity:.78;white-space:pre;tab-size:4}
+footer{color:var(--muted);font-size:11.5px;padding:6px 0 0;text-align:center}
+</style></head><body>
+<div class="wrap">
+
+<header>
+  <span class="mark"><b>sentinel</b></span>
+  <span class="tag">local review</span>
+  <span class="right">
+    <span class="live"><span class="beacon off" id="beacon"></span><span id="livelabel">idle</span></span>
+    <span id="meta">connecting…</span>
+  </span>
+</header>
+
+<section class="card">
+  <h2>Pipeline <span class="sub" id="pipesub"></span></h2>
+  <div class="rail" id="rail"></div>
+  <div class="legend">
+    <span><i style="background:var(--model)"></i>model-backed</span>
+    <span><i style="background:var(--pure)"></i>deterministic — trusts no model</span>
+    <span id="railnote"></span>
+  </div>
+</section>
+
+<div class="cols">
+  <section class="card">
+    <h2>What survived <span class="sub" id="funsub"></span></h2>
+    <div class="pad"><div class="fun" id="funnel"></div></div>
+  </section>
+  <section class="card">
+    <h2>Models served <span class="sub" id="modsub"></span></h2>
+    <div id="models"><div class="empty">loading…</div></div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Reviews</h2>
+  <div id="runs"><div class="empty">loading…</div></div>
+</section>
+
+<section class="card">
+  <h2>Logs</h2>
+  <div class="logbar">
+    <select id="alias" aria-label="backend log"></select>
+    <button id="refresh">Refresh</button>
+    <span class="sub" id="logmeta" style="color:var(--muted);font-size:11.5px"></span>
+  </div>
+  <pre class="log" id="log">Select a backend.</pre>
+</section>
+
+<footer>127.0.0.1 only · read-only · nothing leaves this machine</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const gb = b => b == null ? "—" : b >= 1e9 ? (b/1073741824).toFixed(1)+" GB"
+                : b >= 1e6 ? (b/1048576).toFixed(0)+" MB" : (b/1024).toFixed(0)+" KB";
+/* Sub-millisecond is not noise here: the deterministic gates really do cost
+   nothing, and rounding them to "0ms" reads as "never measured". */
+const ms = v => v == null ? null
+  : v >= 1000 ? (v/1000).toFixed(1)+"s"
+  : v < 1 ? "<1ms" : Math.round(v)+"ms";
+
+async function get(u){ const r = await fetch(u); if(!r.ok) throw 0; return r.json(); }
+
+async function pollStatus(){
+  let s;
+  try{ s = await get('/api/status'); }
+  catch(e){ $('meta').textContent='unreachable'; $('beacon').className='beacon bad'; return; }
+  const t = s.totals||{};
+  const running = (s.active_reviews||[]).length > 0;
+  $('beacon').className = 'beacon ' + (running ? 'on' : (t.healthy===t.count ? '' : 'bad'));
+  $('livelabel').textContent = running
+    ? 'reviewing ' + ((s.active_reviews[0].target||'').split('/').pop() || '…')
+    : (t.healthy===t.count ? 'ready' : 'degraded');
+  $('meta').textContent = `${t.healthy}/${t.count} models · ${gb(t.resident_bytes)} · `
+    + `${s.corpus_rules ?? '—'} rules`;
+  $('modsub').textContent = gb(t.resident_bytes) + ' resident';
+
+  $('models').innerHTML = `<table><thead><tr>
+      <th>alias</th><th>port</th><th class="n">resident</th><th class="n">cpu</th></tr></thead>
+    <tbody>${s.backends.map(b=>`<tr>
+      <td><span class="dotstat ${b.healthy?'':'bad'}"></span>${esc(b.alias)}</td>
+      <td class="id">${b.port}</td>
+      <td class="n">${gb(b.rss_bytes)}</td>
+      <td class="n">${b.cpu_percent==null?'—':b.cpu_percent.toFixed(1)+'%'}</td>
+    </tr>`).join('')}
+    ${s.services.map(x=>`<tr>
+      <td><span class="dotstat ${x.healthy?'':'bad'}"></span>${esc(x.name)}</td>
+      <td class="id">${x.port}</td><td class="n">${gb(x.rss_bytes)}</td><td class="n">—</td>
+    </tr>`).join('')}</tbody></table>`;
+
+  const sel = $('alias');
+  if(!sel.options.length){
+    sel.innerHTML = s.backends.map(b=>`<option>${esc(b.alias)}</option>`).join('')
+                  + ['litellm','redis-cache'].map(n=>`<option>${n}</option>`).join('');
+    loadLog();
+  }
+}
+
+async function pollPipeline(){
+  let p;
+  try{ p = await get('/api/pipeline'); }catch(e){ return; }
+  $('rail').innerHTML = p.stages.map(st=>{
+    const live = st.live||{};
+    return `<div class="stage ${st.kind}">
+      <div class="node">${esc(st.node)}</div>
+      <div class="kindbar"></div>
+      ${ms(st.p50_ms)!==null
+          ? `<div><span class="num">${ms(st.p50_ms)}</span> <span class="unit">p50</span></div>`
+          : `<div><span class="unit">${st.kind==='pure'?'no model call':'not timed'}</span></div>`}
+      ${live.active ? `<div class="tps">▲ ${live.tokens_per_second} tok/s · ${live.slots} slot${live.slots>1?'s':''}</div>` : ``}
+      <div class="note">${esc(st.note)}</div>
+    </div>`;
+  }).join('');
+  const anyLive = p.stages.some(s=>(s.live||{}).active);
+  $('railnote').textContent = anyLive ? '▲ = generating now' : '';
+  $('pipesub').textContent = p.last_run
+    ? `latency from last run · ${esc((p.last_run.target||'').split('/').pop())}` : '';
+}
+
+async function pollRuns(){
+  let runs; try{ runs = await get('/api/runs'); }catch(e){ return; }
+  if(!runs.length){
+    $('runs').innerHTML = '<div class="empty">No reports yet. Run <code>sentinel review &lt;path&gt;</code>.</div>';
+    $('funnel').innerHTML = '<div class="empty" style="padding:0">Nothing reviewed yet.</div>';
+    return;
+  }
+  $('runs').innerHTML = `<table><thead><tr>
+      <th>target</th><th class="n">findings</th><th class="n">suppressed</th>
+      <th class="n">unadjudicated</th><th class="n">warnings</th>
+      <th class="n">wall</th><th>state</th></tr></thead>
+    <tbody>${runs.map(r=>{const y=r.summary||{};return `<tr>
+      <td title="${esc(r.path)}">${esc((r.target||'').split('/').pop())}</td>
+      <td class="n">${y.findings ?? '—'}</td>
+      <td class="n">${y.suppressed_candidates ?? '—'}</td>
+      <td class="n">${y.judge_unavailable ?? 0}</td>
+      <td class="n">${y.input_warnings ?? 0}</td>
+      <td class="n">${r.wall_seconds ? (r.wall_seconds/60).toFixed(1)+'m' : '—'}</td>
+      <td>${y.complete===false
+            ? '<span style="color:var(--warn)">partial</span>'
+            : '<span style="color:var(--pure)">complete</span>'}</td>
+    </tr>`}).join('')}</tbody></table>`;
+
+  const r = runs[0], d = r.gate_drops||{}, total = Math.max(r.candidates||0,1);
+  const rows = [
+    {k:'candidates', label:'Candidates proposed', sub:'what deep review claimed', v:r.candidates||0, cls:''},
+    {k:'validator', label:'Rejected by the gate', sub:'ungrounded, unlocatable, or inapplicable', v:d.validator||0, cls:'drop'},
+    {k:'judge', label:'Refuted by the judge', sub:'survived the gate, lost the argument', v:d.judge||0, cls:'drop'},
+    {k:'unadj', label:'Never adjudicated', sub:'judge did not answer — quarantined, not dismissed', v:r.unadjudicated||0, cls:'drop'},
+    {k:'emitted', label:'Emitted as findings', sub:'grounded in a cited rule', v:r.emitted||0, cls:'keep'},
+  ];
+  $('funnel').innerHTML = rows.map(x=>`<div class="fstep ${x.cls}">
+      <div class="lab">${x.label}<small>${x.sub}</small>
+        <div class="fbar"><i style="width:${Math.round(100*x.v/total)}%"></i></div></div>
+      <div class="val">${x.v}</div>
+    </div>`).join('');
+  $('funsub').textContent = r.severity_filter
+    ? `${esc((r.target||'').split('/').pop())} · filtered to ${r.severity_filter.join(', ')} — proposed count is a lower bound`
+    : esc((r.target||'').split('/').pop());
+}
+
+async function loadLog(){
+  const a = $('alias').value; if(!a) return;
+  try{
+    const d = await get('/api/logs?alias='+encodeURIComponent(a)+'&n=300');
+    $('log').textContent = d.error ? d.error : (d.lines.join('\n') || '(empty)');
+    $('logmeta').textContent = d.bytes ? gb(d.bytes)+' on disk' : '';
+    $('log').scrollTop = $('log').scrollHeight;
+  }catch(e){ $('log').textContent = 'Could not read that log.'; }
+}
+$('refresh').onclick = loadLog;
+$('alias').onchange = loadLog;
+
+function tick(){ pollStatus(); pollPipeline(); }
+tick(); pollRuns();
+setInterval(tick, 3000);
+setInterval(pollRuns, 12000);
+</script></body></html>

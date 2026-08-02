@@ -1,0 +1,25 @@
+id: cwe-643-xpath-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-643
+title: XPath Injection in .NET XML Queries
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  External values spliced into XPath expressions can alter predicates and expose
+  XML nodes the application did not intend to select.
+detection_criteria: |
+  Flag untrusted data concatenated or interpolated into SelectNodes,
+  SelectSingleNode, XPathNavigator.Select, Evaluate, or compiled XPath text.
+  Fixed expressions with variables supplied through XsltContext are controls.
+example_vulnerable: |
+  var node = document.SelectSingleNode($"//user[name='{name}']");
+example_secure: |
+  var expression = navigator.Compile("//user[name=$name]");
+  expression.SetContext(contextWithBoundName);
+references:
+  - url: https://cwe.mitre.org/data/definitions/643.html
+    title: CWE-643 XPath Injection
+  - url: https://learn.microsoft.com/en-us/dotnet/standard/data/xml/process-xml-data-using-the-xpath-data-model
+    title: Microsoft XPath Data Model

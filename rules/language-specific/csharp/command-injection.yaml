@@ -1,0 +1,27 @@
+id: cwe-78-command-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-78
+title: OS Command Injection in .NET Process Execution
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  User-controlled command text passed to Process.Start or shell arguments can
+  execute additional operating-system commands with the application's rights.
+detection_criteria: |
+  Flag external data concatenated or interpolated into Process.Start arguments,
+  ProcessStartInfo.Arguments, cmd.exe, powershell, or a shell command string.
+  ProcessStartInfo.ArgumentList with fixed executable and separate arguments is
+  the preferred control; do not flag fixed command text.
+example_vulnerable: |
+  Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping {host}"));
+example_secure: |
+  var psi = new ProcessStartInfo("ping");
+  psi.ArgumentList.Add(host);
+  Process.Start(psi);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.argumentlist
+    title: Microsoft ProcessStartInfo.ArgumentList
+  - url: https://cwe.mitre.org/data/definitions/78.html
+    title: CWE-78 OS Command Injection

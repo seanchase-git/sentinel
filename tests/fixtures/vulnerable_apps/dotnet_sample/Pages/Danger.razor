@@ -1,0 +1,21 @@
+@page "/danger"
+@inject IJSRuntime JS
+
+<p>@encodedValue</p>
+<div>@((MarkupString)untrustedHtml)</div>
+<button @onclick="RunScript">Run</button>
+
+@code {
+    [SupplyParameterFromQuery(Name = "bio")]
+    public string? Bio { get; set; }
+
+    [SupplyParameterFromQuery(Name = "script")]
+    public string? Script { get; set; }
+
+    private string encodedValue = "<strong>encoded</strong>";
+    private string untrustedHtml = string.Empty;
+
+    protected override void OnParametersSet() => untrustedHtml = Bio ?? string.Empty;
+
+    private Task RunScript() => JS.InvokeVoidAsync("eval", Script).AsTask();
+}

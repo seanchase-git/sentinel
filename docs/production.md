@@ -15,7 +15,8 @@ not become useful by getting better packaging. See the per-file row in
 [decisions.md](decisions.md).
 
 Two coverage holes are open and both quietly cost findings: the judge blows its deadline
-under concurrent load, and deep review can time out on a small file and skip it. Both
+(generation latency, not concurrency — a single-file review with no queueing trips it),
+and deep review can time out on a small file and skip it. Both
 surface in the report and in the exit code, so they are visible rather than silent, but
 visible is not fixed.
 

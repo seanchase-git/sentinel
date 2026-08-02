@@ -1,0 +1,25 @@
+id: cwe-73-arbitrary-file-write-csharp
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-73
+title: External Control of .NET File Write Path
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Allowing a caller to control the path supplied to a write operation can overwrite
+  application, configuration, startup, or user files outside the intended directory.
+detection_criteria: |
+  Flag untrusted path or file-name data reaching File.WriteAllText/Bytes, FileStream
+  write mode, CopyTo-created paths, Move, or Replace without canonical containment
+  and an application-generated storage name.
+example_vulnerable: |
+  File.WriteAllText(Path.Combine(backupRoot, request.FileName), request.Content);
+example_secure: |
+  var storedName = $"{Guid.NewGuid():N}.dat";
+  File.WriteAllText(Path.Combine(backupRoot, storedName), request.Content);
+references:
+  - url: https://cwe.mitre.org/data/definitions/73.html
+    title: CWE-73 External Control of File Name or Path
+  - url: https://learn.microsoft.com/en-us/aspnet/core/mvc/models/file-uploads
+    title: Microsoft Upload Files in ASP.NET Core

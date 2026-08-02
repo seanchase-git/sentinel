@@ -1,0 +1,24 @@
+id: cwe-79-aspnetcore-raw-rendering
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-79
+title: Untrusted Raw HTML in Razor or Blazor
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Html.Raw and MarkupString bypass Razor and Blazor's normal output encoding, so
+  untrusted HTML or SVG is interpreted by the browser.
+detection_criteria: |
+  Flag request, route, database, upload, or other untrusted content passed to
+  Html.Raw, new HtmlString, MarkupString casts, or raw rendering. Ordinary Razor
+  expressions and Blazor string rendering are encoded and must not be flagged.
+example_vulnerable: |
+  @((MarkupString)comment.Body)
+example_secure: |
+  <p>@comment.Body</p>
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/blazor/components/
+    title: Microsoft ASP.NET Core Razor Components Raw HTML
+  - url: https://cwe.mitre.org/data/definitions/79.html
+    title: CWE-79 Cross-Site Scripting

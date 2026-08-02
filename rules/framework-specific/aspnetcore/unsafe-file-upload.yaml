@@ -1,0 +1,25 @@
+id: cwe-434-aspnetcore-unsafe-file-upload
+taxonomy:
+  - owasp: A04:2021
+  - cwe: CWE-434
+title: Unsafe ASP.NET Core File Upload
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Uploads stored under caller names, in executable/public locations, without size
+  and content validation can become overwrite, stored-XSS, or code-execution paths.
+detection_criteria: |
+  Flag IFormFile or IBrowserFile content written using FileName, served as active
+  HTML/SVG, stored under web root, or accepted without relevant size/type controls.
+  Application-generated names outside web root and content-disposition downloads are controls.
+example_vulnerable: |
+  await upload.CopyToAsync(File.Create(Path.Combine(env.WebRootPath, upload.FileName)));
+example_secure: |
+  var storedName = Path.GetRandomFileName();
+  await upload.CopyToAsync(File.Create(Path.Combine(privateRoot, storedName)));
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/mvc/models/file-uploads
+    title: Microsoft Upload Files in ASP.NET Core
+  - url: https://cwe.mitre.org/data/definitions/434.html
+    title: CWE-434 Unrestricted Upload of File with Dangerous Type

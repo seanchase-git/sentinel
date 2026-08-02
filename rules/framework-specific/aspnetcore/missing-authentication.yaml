@@ -1,0 +1,24 @@
+id: cwe-306-missing-authentication-aspnetcore
+taxonomy:
+  - owasp: A01:2021
+  - cwe: CWE-306
+title: Missing Authentication on ASP.NET Core Endpoint
+severity: high
+languages: [csharp]
+frameworks: [aspnetcore]
+description: |
+  Sensitive controller, Razor Page, hub, or minimal API endpoints without an
+  authentication requirement are reachable by anonymous callers.
+detection_criteria: |
+  Flag a concrete sensitive route with no covering Authorize attribute, RequireAuthorization,
+  authorization convention, or in-handler identity enforcement visible in the
+  window. Do not flag health, login, registration, callback, or intentionally public routes.
+example_vulnerable: |
+  app.MapDelete("/admin/users/{id}", DeleteUser);
+example_secure: |
+  app.MapDelete("/admin/users/{id}", DeleteUser).RequireAuthorization();
+references:
+  - url: https://learn.microsoft.com/en-us/aspnet/core/security/authorization/simple
+    title: Microsoft Simple Authorization in ASP.NET Core
+  - url: https://cwe.mitre.org/data/definitions/306.html
+    title: CWE-306 Missing Authentication for Critical Function

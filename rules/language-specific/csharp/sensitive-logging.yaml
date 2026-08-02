@@ -1,0 +1,24 @@
+id: cwe-532-sensitive-logging-csharp
+taxonomy:
+  - owasp: A09:2021
+  - cwe: CWE-532
+title: Sensitive Data Written to .NET Logs
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  Logging passwords, access tokens, authorization headers, payment data, or
+  private keys copies secrets into broadly retained operational systems.
+detection_criteria: |
+  Flag concrete sensitive values flowing into ILogger, Console, Trace, or audit
+  log calls. Logging identifiers or redacted values is safe; do not infer that a
+  generic object is sensitive without visible fields or provenance.
+example_vulnerable: |
+  logger.LogInformation("Login {User} password {Password}", user, request.Password);
+example_secure: |
+  logger.LogInformation("Login attempt for {User}", user);
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/core/extensions/logging
+    title: Microsoft .NET Logging
+  - url: https://cwe.mitre.org/data/definitions/532.html
+    title: CWE-532 Insertion of Sensitive Information into Log File

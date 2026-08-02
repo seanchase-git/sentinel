@@ -1,0 +1,24 @@
+id: cwe-338-insecure-random-csharp
+taxonomy:
+  - owasp: A02:2021
+  - cwe: CWE-338
+title: System.Random Used for a Security Value
+severity: high
+languages: [csharp]
+frameworks: []
+description: |
+  System.Random is predictable and must not generate reset tokens, session ids,
+  API keys, verification codes, nonces, salts, or cryptographic keys.
+detection_criteria: |
+  Flag new Random, Random.Shared, or seeded pseudo-random output when the result is
+  used as a security value. Require RandomNumberGenerator or a security protocol's
+  generator. Do not flag simulations, UI effects, games, or sampling.
+example_vulnerable: |
+  var resetCode = Random.Shared.Next(100000, 999999).ToString();
+example_secure: |
+  var resetCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+references:
+  - url: https://learn.microsoft.com/en-us/dotnet/api/system.security.cryptography.randomnumbergenerator
+    title: Microsoft RandomNumberGenerator
+  - url: https://cwe.mitre.org/data/definitions/338.html
+    title: CWE-338 Cryptographically Weak PRNG

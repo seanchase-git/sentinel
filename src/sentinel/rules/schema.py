@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from sentinel.rules.categories import RISK_CATEGORIES, derive_risk_categories
 
-SUPPORTED_LANGUAGES = frozenset({"python", "javascript", "typescript", "any"})
+SUPPORTED_LANGUAGES = frozenset({"python", "javascript", "typescript", "csharp", "any"})
 
 
 class Severity(StrEnum):

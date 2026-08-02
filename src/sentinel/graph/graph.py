@@ -49,6 +49,7 @@ def build_graph(gateway: Gateway):
                 classification.language,
                 list(classification.risk_categories),
                 classification.framework,
+                state.get("grammar_hint"),
             )
         return {
             "windows": [
@@ -97,6 +98,7 @@ def build_graph(gateway: Gateway):
                         state["source"],
                         window,
                         rules,
+                        grammar=state.get("grammar_hint"),
                     )
                 except GatewayError as exc:
                     return {"status": "error", "error": f"deep review failed: {exc}"}

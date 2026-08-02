@@ -83,7 +83,7 @@ made.
 | **Decision** | Deep review runs with reasoning disabled. The refutation pass runs with it enabled. |
 | **Rejected** | One setting for both. |
 | **Why** | Generation produces a list and competes for the token budget. Reasoning traces consumed the window before the JSON answer arrived, so the cost landed as hard timeouts rather than slower-but-better output. Refutation produces one short answer and is where the judgment is genuinely hard. |
-| **Consequence** | Two configurations to keep straight, and a judge slow enough that it blows its deadline under concurrent load. That is a live coverage hole, not a solved problem. |
+| **Consequence** | Two configurations to keep straight, and a judge slow enough that it blows its deadline. Originally attributed to concurrent load; that is wrong. A one-file review with no queueing tripped it on 2026-08-01, so the cause is generation latency — a `/think` refutation on a 49B at ~9 tok/s exhausts 300s in ~2700 tokens. The deadline is now 600s and the outage rate is still 3 of 48 adjudications. A live coverage hole, not a solved problem. |
 
 ## Provenance is checked at startup
 

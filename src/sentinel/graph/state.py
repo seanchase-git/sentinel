@@ -46,6 +46,7 @@ class FileReviewState(TypedDict, total=False):
     abs_path: str
     source: str
     language_hint: str            # from the walker (extension-based)
+    grammar_hint: str             # tree-sitter grammar (Razor differs from language)
 
     # node outputs
     guardrail: GuardrailResult

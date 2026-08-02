@@ -26,7 +26,7 @@ It earns its keep. The reviewing model quotes source that is not in the file abo
 
 ### The applicability gate
 
-The judge used to score whether a finding resembled the rule text, never whether the rule's preconditions held, so almost everything came back grounded. Deep review now has to name its evidence, the untrusted source and the sink and their line numbers, and code verifies those locations exist in the window the candidate came from. Be precise about what that buys: it proves the evidence is real and located, and it runs mechanical predicates for a handful of weakness families. It does not prove the rule applies. Access-control findings still rest on a reason the model wrote, because a missing check has no untrusted source to point at. A finding that cannot say where untrusted data enters is not a finding, and that is a weaker guarantee than deciding the rule holds.
+The judge used to score whether a finding resembled the rule text, never whether the rule's preconditions held, so almost everything came back grounded. Deep review now has to name its evidence, the untrusted source and the sink and their line numbers, and code verifies those locations exist in the window the candidate came from. Be precise about what that buys: it proves the evidence is real and located, and it runs mechanical predicates for a handful of weakness families. It does not prove the rule applies. Access-control findings still rest on a reason the model wrote, because a missing check has no untrusted source to point at. A finding that cannot say where untrusted data enters is not a finding — except for the two classes where that question is meaningless: access-control defects, and single-location property or configuration defects such as a hardcoded secret or a weak cipher, which name a sink and no source by design. All of it is a weaker guarantee than deciding the rule holds.
 
 Access control needed its own shape. A missing-authentication defect has no untrusted source, because nothing flows anywhere and the defect is the absence of a check. Demanding source-and-sink universally made the gate structurally incapable of passing that entire class.
 
@@ -74,6 +74,14 @@ guardrail -> classify -> retrieve -> triage -> deep_review -> validate -> judge 
 
 Retrieval chunks the file with tree-sitter, groups chunks into review windows under a token budget, embeds them, and pulls the top rules per window out of Postgres with pgvector. Deep review proposes findings per window. Validation rejects anything that cannot be tied to a retrieved rule and real source. The applicability gate rejects anything whose evidence does not hold up. The judge tries to refute what survives.
 
+`uv run sentinel dashboard` serves that pipeline on `127.0.0.1:8200`, and a review started from a terminal opens it automatically. A piped or redirected run does not, because a browser opening in CI is a surprise rather than a courtesy.
+
+![The Sentinel dashboard: an eight-stage pipeline rail showing per-stage latency, two stages generating tokens live, and a funnel showing six candidates reduced to two findings.](docs/dashboard.png)
+
+Two things it is built to show. The line under each stage says what that stage trusts: indigo is model-backed, green is deterministic code that takes no model's word for anything. And **What survived** is the funnel, which is the honest picture of this design — most of what the reviewing model proposes gets thrown away, and you can see which gate threw it away. The run above kept two of six.
+
+Live token rates come from each llama-server's own log rather than from the reviewer, so the dashboard is a reader and never something the review path depends on. It is read-only, loopback-enforced through the same check the model clients use, and serves no route that can start, stop, or reconfigure anything.
+
 Architecture detail is in `docs/architecture.md`, and `docs/decisions.md` records what each design choice cost. Evaluation method is in `evals/`. `docs/production.md` is the honest gap between this and something a team could depend on.
 
 ## Quick start
@@ -104,8 +112,9 @@ Read these before you point it at anything you care about.
 - Precision is low. Expect to triage most findings yourself.
 - Results vary between runs. Do not gate continuous integration on it.
 - Recall is worse than precision. The single-file architecture cannot see a vulnerability that spans files, and authorization bugs in particular tend to live across a request handler in one file and a data access layer in another.
-- The rule corpus is 51 rules. For JavaScript that is small enough that retrieval returns nearly every eligible rule regardless of the file, so retrieval contributes little signal.
-- Framework detection covers Flask, Django, FastAPI, Express, Fastify, Angular, Next.js, and React. Anything else reviews against language-level rules only.
+- The rule corpus is 87 rules. For JavaScript that is small enough that retrieval returns nearly every eligible rule regardless of the file, so retrieval contributes little signal.
+- Framework detection covers Flask, Django, FastAPI, Express, Fastify, Angular, Next.js, React, and ASP.NET Core. Anything else reviews against language-level rules only.
+- **C# and Razor support is beta and I would not rely on it yet.** An adversarial review of that work turned up fifteen defects; the ones that regressed Python, JavaScript and TypeScript are fixed and pinned by tests, but eight remain and nearly all of them are ways a real C# finding gets silently discarded. They are written up in [`docs/known-issues.md`](docs/known-issues.md). A clean C# report is not evidence that there is nothing there.
 - Reports contain verbatim source, and so do suppressed candidates, unadjudicated candidates, and error strings. Run with `umask 077` and keep the output directory outside the repository.
 - The walker ignores `.gitignore`. It excludes `node_modules`, `dist`, build caches, and similar by name, and refuses symlinks that resolve outside the review root.
 

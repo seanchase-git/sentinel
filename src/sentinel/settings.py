@@ -8,6 +8,26 @@ truncation limits stay next to the nodes that use them.
 # Retrieval
 TOP_K_RULES = 20
 
+# Guardrail categories that describe what the reviewed code DOES rather than an
+# attack on the reviewer. These downgrade from "refuse the file" to a recorded
+# warning, and the file is reviewed normally.
+#
+# Sentinel exists to read code that abuses interpreters — eval, raw SQL,
+# deserialization, shell execution — so treating "this is code interpreter
+# abuse" as grounds to refuse makes the tool refuse its own subject matter.
+# Observed: a Blazor page is rejected S14 for containing
+# JS.InvokeVoidAsync("eval", ...), the exact construct
+# cwe-79-blazor-unsafe-js-interop exists to find, so that rule could never fire
+# on the code it targets.
+#
+# Widen this set only with care. Everything not listed here still halts the
+# file, including an unsafe verdict with no parseable category and unparseable
+# guard output — both must keep failing closed. The guardrail's real job,
+# refusing content that tries to manipulate the reviewing model, is untouched:
+# prompt-injection lives in categories that are not listed here, plus the
+# deterministic filename screen in nodes.py.
+GUARDRAIL_ADVISORY_CATEGORIES: frozenset[str] = frozenset({"S14"})
+
 # Groundedness judge: emit a finding only if grounded AND score >= threshold
 JUDGE_THRESHOLD = 0.7
 
@@ -23,11 +43,23 @@ DEEP_REVIEW_TIMEOUT_PER_WINDOW = 600.0
 # closed, a timeout suppresses the finding rather than judging it.
 #
 # Infrastructure slowness quietly suppressing real vulnerabilities is the worst
-# failure shape this system has, so the budget is generous on purpose. Sized
-# against DEEP_REVIEW_TIMEOUT_PER_WINDOW, which is 600s for a whole window; one
-# short verdict gets half of that. Measured refutation latency is 43-130s per
-# finding when the backend is not contended, and longer under concurrent load.
-JUDGE_TIMEOUT_PER_FINDING = 300.0
+# failure shape this system has, so the budget is generous on purpose. Measured
+# refutation latency is 43-130s per finding when the backend is not contended,
+# and longer under concurrent load.
+#
+# Raised 300 -> 600 on 2026-08-01. 300s was half of DEEP_REVIEW_TIMEOUT_PER_WINDOW
+# on the reasoning that one verdict is smaller than a whole window. That reasoning
+# ignored decode rate: a /think refutation on the 49B at the measured ~9 tok/s
+# spends its whole budget on roughly 2700 tokens, which a reasoning trace reaches
+# routinely. A one-file flask_sqli review tripped it and quarantined a real
+# hardcoded-secret finding, marking the run complete=false — on a fixture small
+# enough that queueing was not a factor, so this is generation time, not
+# contention. The same shape cost DVNA run 1 its quotability. Deadlines are
+# infrastructure, not detection: a judge that never answered must not read as a
+# judge that refuted. Now equal to the window deadline, which is the natural
+# ceiling — SLOT_ACQUIRE_TIMEOUT (900s) still sits above it, so genuine slot
+# starvation keeps its own distinct error.
+JUDGE_TIMEOUT_PER_FINDING = 600.0
 
 # Per-file concurrency for the runner. Higher than deep-review's 2 slots on
 # purpose: guardrail, classify, triage and embedding live on other backends and

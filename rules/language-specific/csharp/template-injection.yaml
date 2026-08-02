@@ -1,0 +1,26 @@
+id: cwe-1336-template-injection-csharp
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-1336
+title: Server-Side Template Injection in .NET
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  Treating untrusted text as a Scriban, Fluid, Razor, or other server-side
+  template lets input change template instructions rather than template data.
+detection_criteria: |
+  Flag attacker-controlled template source passed to Parse, Compile, Render,
+  RenderAsync, or equivalent dynamic template APIs. Supplying untrusted values
+  only as a model to a fixed application-owned template is safe.
+example_vulnerable: |
+  var template = Template.Parse(request.Template);
+  return template.Render(model);
+example_secure: |
+  var template = Template.Parse(OwnedTemplates.Invoice);
+  return template.Render(new { request.Name });
+references:
+  - url: https://cwe.mitre.org/data/definitions/1336.html
+    title: CWE-1336 Improper Neutralization in Template Engine
+  - url: https://github.com/scriban/scriban/blob/master/doc/language.md
+    title: Scriban Language Documentation

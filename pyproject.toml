@@ -37,6 +37,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sentinel"]
+# dashboard.html is loaded at runtime by sentinel/dashboard.py
+artifacts = ["src/sentinel/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

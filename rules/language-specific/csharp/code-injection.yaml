@@ -1,0 +1,25 @@
+id: cwe-94-code-injection-csharp-script
+taxonomy:
+  - owasp: A03:2021
+  - cwe: CWE-94
+title: Untrusted C# Code Evaluation
+severity: critical
+languages: [csharp]
+frameworks: []
+description: |
+  Compiling or evaluating attacker-controlled C# source gives the input the
+  capabilities exposed by the script host and can become arbitrary code execution.
+detection_criteria: |
+  Flag untrusted text passed to CSharpScript.EvaluateAsync, RunAsync, Roslyn
+  compilation, or another dynamic code-evaluation API. A fixed script literal
+  or an allowlisted expression parser is not this finding.
+example_vulnerable: |
+  var result = await CSharpScript.EvaluateAsync<object>(request.Code);
+example_secure: |
+  var operation = AllowedOperations[request.Operation];
+  var result = operation(request.Value);
+references:
+  - url: https://cwe.mitre.org/data/definitions/94.html
+    title: CWE-94 Code Injection
+  - url: https://github.com/dotnet/roslyn/blob/main/docs/wiki/Scripting-API-Samples.md
+    title: Roslyn Scripting API Samples

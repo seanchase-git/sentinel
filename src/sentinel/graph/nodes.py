@@ -19,11 +19,13 @@ from sentinel.graph.schemas import (
     TriageResult,
 )
 from sentinel.ingest.chunker import ReviewWindow, chunk_file, group_windows
+from sentinel.ingest.walker import EXTENSION_LANGUAGES
 from sentinel.models.gateway import Gateway, GatewayError
 from sentinel.retrieval.rules_store import RetrievedRule, RulesStore
 from sentinel.settings import (
     CLASSIFY_TIMEOUT,
     DEEP_REVIEW_TIMEOUT_PER_WINDOW,
+    GUARDRAIL_ADVISORY_CATEGORIES,
     GUARDRAIL_TIMEOUT,
     JUDGE_THRESHOLD,
     JUDGE_TIMEOUT_PER_FINDING,
@@ -85,11 +87,58 @@ _FRAMEWORK_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("angular", re.compile(r"""from\s+['"]@angular/""")),
     ("nextjs", re.compile(r"""from\s+['"]next(/|['"])""")),
     ("react", re.compile(r"""from\s+['"]react['"]|require\(\s*['"]react['"]\s*\)""")),
+    (
+        "aspnetcore",
+        re.compile(
+            r"Microsoft\.AspNetCore|\b(?:ControllerBase|ApiController|IActionResult|"
+            r"WebApplication\.CreateBuilder|Map(?:Get|Post|Put|Patch|Delete|Controllers|"
+            r"RazorPages|BlazorHub)|Add(?:Controllers|Mvc|RazorPages|ServerSideBlazor)|"
+            r"ComponentBase|NavigationManager|IJSRuntime)\b|"
+            r"\[(?:Route|HttpGet|HttpPost|HttpPut|HttpPatch|HttpDelete|Authorize|"
+            r"AllowAnonymous)\b",
+            re.MULTILINE,
+        ),
+    ),
 ]
 
+# Razor directives are indistinguishable from Python decorators by regex alone:
+# `@inject` is both a Blazor directive and a decorator from the widely-used
+# dependency_injector library. They only carry meaning in a Razor file.
+_RAZOR_DIRECTIVE_RE = re.compile(
+    r"^\s*@(page|model|inject|attribute|rendermode)\b", re.MULTILINE
+)
+_RAZOR_SUFFIXES = (".razor", ".cshtml")
 
-def detect_framework(content: str) -> str | None:
+# A framework belongs to a language, and these patterns run over raw text that
+# includes comments and strings. Ordering the list cannot fix that: put
+# aspnetcore first and a Python `@inject` decorator wins; put it last and a C#
+# controller whose comment mentions `import React from "react"` wins. Filter by
+# the file's language instead, so a pattern is only consulted where the
+# framework could actually be used. Unknown extension falls back to trying all,
+# which is the pre-existing behaviour.
+_FRAMEWORK_LANGUAGES: dict[str, frozenset[str]] = {
+    "flask": frozenset({"python"}),
+    "django": frozenset({"python"}),
+    "fastapi": frozenset({"python"}),
+    "express": frozenset({"javascript", "typescript"}),
+    "fastify": frozenset({"javascript", "typescript"}),
+    "angular": frozenset({"javascript", "typescript"}),
+    "nextjs": frozenset({"javascript", "typescript"}),
+    "react": frozenset({"javascript", "typescript"}),
+    "aspnetcore": frozenset({"csharp"}),
+}
+
+
+def detect_framework(content: str, file_path: str | None = None) -> str | None:
+    language: str | None = None
+    if file_path is not None:
+        suffix = Path(file_path).suffix.lower()
+        language = EXTENSION_LANGUAGES.get(suffix)
+        if suffix in _RAZOR_SUFFIXES and _RAZOR_DIRECTIVE_RE.search(content):
+            return "aspnetcore"
     for name, pattern in _FRAMEWORK_PATTERNS:
+        if language is not None and language not in _FRAMEWORK_LANGUAGES[name]:
+            continue
         if pattern.search(content):
             return name
     return None
@@ -105,6 +154,14 @@ KNOWN_FRAMEWORKS: frozenset[str] = frozenset(name for name, _ in _FRAMEWORK_PATT
 # morally right but never string-matches the corpus value "nextjs", so the
 # +0.05 framework rerank silently fails to fire.
 _FRAMEWORK_ALIASES: dict[str, str] = {
+    "asp.net": "aspnetcore",
+    "asp.net core": "aspnetcore",
+    "aspnet": "aspnetcore",
+    "aspnet core": "aspnetcore",
+    "aspnetcore": "aspnetcore",
+    "blazor": "aspnetcore",
+    "razor": "aspnetcore",
+    "razor pages": "aspnetcore",
     "next": "nextjs",
     "next.js": "nextjs",
     "nextjs": "nextjs",
@@ -154,27 +211,48 @@ async def _guard_segment(gateway: Gateway, file_path: str, segment: str) -> Guar
         return GuardrailResult(safe=False, category="unparseable-guard-output")
     if match.group(1).lower() == "safe":
         return GuardrailResult(safe=True)
-    category_match = _GUARD_CATEGORY_RE.search(text)
-    return GuardrailResult(safe=False, category=category_match.group(1) if category_match else None)
+    # Llama Guard may name SEVERAL categories, comma separated. Reading only the
+    # first is a fail-OPEN bug once any category is advisory: "S14,S1" would be
+    # downgraded on the strength of S14 while silently discarding S1. Collect
+    # them all and let the caller decide; a single blocking category must win.
+    categories = _GUARD_CATEGORY_RE.findall(text)
+    blocking = [c for c in categories if c not in GUARDRAIL_ADVISORY_CATEGORIES]
+    if blocking:
+        return GuardrailResult(safe=False, category=blocking[0])
+    if categories:
+        return GuardrailResult(safe=False, category=categories[0])
+    return GuardrailResult(safe=False, category=None)
 
 
 async def guardrail_check(gateway: Gateway, file_path: str, content: str) -> GuardrailResult:
     """Input guardrail (D3): deterministic filename screen, then Llama Guard 3
     via raw completion with the official template.
 
-    Unconditional per PRD: any unsafe verdict halts the file's review. The
-    ENTIRE file is scanned in bounded segments (injection can hide anywhere,
-    not just in the first 24k chars), and the path is screened too."""
+    Any blocking unsafe verdict halts the file's review. The ENTIRE file is
+    scanned in bounded segments (injection can hide anywhere, not just in the
+    first 24k chars), and the path is screened too.
+
+    Advisory categories (see _ADVISORY_GUARD_CATEGORIES) do not halt the file;
+    they are collected and reported so the reader learns what tripped without
+    losing the review. A file is only allowed through on advisories alone — one
+    blocking verdict in any segment still stops everything.
+    """
     if _FILENAME_INJECTION_RE.search(file_path):
         return GuardrailResult(safe=False, category="filename-injection")
     if not content:
         return GuardrailResult(safe=True)
+    advisories: list[str] = []
     for offset in range(0, len(content), _GUARD_MAX_CONTENT_CHARS):
         segment = content[offset : offset + _GUARD_MAX_CONTENT_CHARS]
         result = await _guard_segment(gateway, file_path, segment)
-        if not result.safe:
-            return result
-    return GuardrailResult(safe=True)
+        if result.safe:
+            continue
+        if result.category in GUARDRAIL_ADVISORY_CATEGORIES:
+            if result.category not in advisories:
+                advisories.append(result.category)
+            continue
+        return result
+    return GuardrailResult(safe=True, advisories=advisories)
 
 
 async def classify_file(gateway: Gateway, file_path: str, content: str) -> Classification:
@@ -192,7 +270,7 @@ async def classify_file(gateway: Gateway, file_path: str, content: str) -> Class
     )
     # Deterministic detection wins outright. Otherwise keep the model's guess
     # only if it names a framework the corpus can actually act on.
-    detected = detect_framework(content)
+    detected = detect_framework(content, file_path)
     result.framework = detected if detected is not None else normalize_framework(
         result.framework
     )
@@ -205,11 +283,12 @@ async def retrieve_rules(
     language: str,
     risk_categories: list[str],
     framework: str | None,
+    grammar: str | None = None,
 ) -> tuple[list[ReviewWindow], list[list[RetrievedRule]]]:
     """Chunk the file, group chunks into deep-review windows, and retrieve
     top-K rules per window (union of its chunks' per-chunk retrievals,
     deduped by best score — plan D6)."""
-    chunks = chunk_file(source, language)
+    chunks = chunk_file(source, language, grammar=grammar)
     windows = group_windows(chunks)
     if not windows:
         return [], []
@@ -313,6 +392,7 @@ async def deep_review_window(
     window: ReviewWindow,
     rules: list[RetrievedRule],
     reasoning_enabled: bool = DEEP_REVIEW_REASONING_ENABLED,
+    grammar: str | None = None,
 ) -> DeepReviewOutput:
     """Run Nemotron generation with configurable reasoning, then gate evidence.
 
@@ -357,9 +437,19 @@ async def deep_review_window(
             else:
                 gated.append(candidate)
             continue
-        decision = validate_applicability(candidate, source, window, rule)
+        decision = validate_applicability(candidate, source, window, rule, grammar=grammar)
         if decision.accepted:
-            gated.append(candidate)
+            # Carry the locations the gate actually FOUND, not the model's
+            # claim. The two differ whenever the model's line drifted, and the
+            # judge is told these lines were deterministically verified.
+            gated.append(
+                candidate.model_copy(
+                    update={
+                        "untrusted_source": decision.resolved_source,
+                        "sink": decision.resolved_sink,
+                    }
+                )
+            )
         else:
             assert decision.reason is not None
             gated.append(mark_applicability_rejection(candidate, decision.reason))
@@ -393,6 +483,25 @@ def _judge_response(finding: dict) -> str:
     )
 
 
+def _format_evidence(finding: dict) -> str:
+    """Render the gate-verified evidence locations for the judge.
+
+    Access-control findings have no untrusted source by construction, so their
+    enforcement reason stands in its place.
+    """
+    parts: list[str] = []
+    source = finding.get("untrusted_source")
+    if source:
+        parts.append(f"untrusted source — line {source['line']}: {source['text']}")
+    sink = finding.get("sink")
+    if sink:
+        parts.append(f"sink — line {sink['line']}: {sink['text']}")
+    reason = finding.get("auth_missing_enforcement_reason")
+    if reason:
+        parts.append(f"claimed missing enforcement: {reason}")
+    return "\n".join(parts) if parts else "(none recorded)"
+
+
 async def judge_finding(gateway: Gateway, finding: dict) -> dict:
     """Try to refute a validated finding; emit only when refutation fails.
 
@@ -405,6 +514,7 @@ async def judge_finding(gateway: Gateway, finding: dict) -> dict:
         line_start=finding["line_start"],
         line_end=finding["line_end"],
         code_snippet=finding["code_snippet"],
+        evidence=_format_evidence(finding),
         explanation=finding["explanation"],
     )
     started = asyncio.get_running_loop().time()

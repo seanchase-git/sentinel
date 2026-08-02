@@ -1,0 +1,10 @@
+@model ProfileViewModel
+@{
+    var note = Context.Request.Query["note"].ToString();
+}
+
+<h1>@Model.DisplayName</h1>
+
+<section>@Html.Raw(note)</section>
+
+<footer>@Model.LastSeen</footer>

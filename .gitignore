@@ -12,3 +12,5 @@ dist/
 .DS_Store
 BACKLOG.md
 benchmarks/
+.vscode/
+HANDOFF.md

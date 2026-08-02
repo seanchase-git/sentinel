@@ -21,6 +21,18 @@ EXTENSION_LANGUAGES: dict[str, str] = {
     ".cjs": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".cs": "csharp",
+    ".razor": "csharp",
+    ".cshtml": "csharp",
+}
+
+# Public language and parser grammar are deliberately separate. Razor source
+# participates in the C# rule corpus and reports as ``csharp``, but its mixed
+# markup/code syntax needs the Razor grammar for chunk boundaries.
+EXTENSION_GRAMMARS: dict[str, str] = {
+    **{ext: language for ext, language in EXTENSION_LANGUAGES.items()},
+    ".razor": "razor",
+    ".cshtml": "razor",
 }
 
 IGNORED_DIRS = {
@@ -34,6 +46,48 @@ IGNORED_DIRS = {
     # not catch them.
     ".angular", ".cache", ".turbo", ".svelte-kit", ".parcel-cache", ".gradle",
 }
+
+# bin/ and obj/ are .NET build output ONLY when they sit next to a project
+# file. They are ordinary source directories everywhere else: an npm package's
+# executable conventionally lives at bin/cli.js, and ignoring the names
+# globally dropped the only entrypoint of a JS package from the review without
+# recording it anywhere.
+_DOTNET_BUILD_DIRS = {"bin", "obj"}
+_DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
+
+
+def _has_dotnet_project_file(directory: Path, memo: dict[Path, bool] | None) -> bool:
+    if memo is not None and directory in memo:
+        return memo[directory]
+    try:
+        found = any(
+            child.suffix.lower() in _DOTNET_PROJECT_SUFFIXES
+            for child in directory.iterdir()
+        )
+    except OSError:
+        found = False
+    if memo is not None:
+        memo[directory] = found
+    return found
+
+
+def _is_dotnet_build_output(
+    path: Path, repo_root: Path, memo: dict[Path, bool] | None = None
+) -> bool:
+    """Whether `path` sits under a `bin`/`obj` that belongs to a .NET project.
+
+    The memo is scoped to a single walk() rather than cached process-wide: the
+    answer is a fact about mutable directory contents, and a review can clone a
+    fresh tree into a path a previous review already used.
+    """
+    parts = path.relative_to(repo_root).parts
+    for index, part in enumerate(parts[:-1]):
+        if part.lower() in _DOTNET_BUILD_DIRS and _has_dotnet_project_file(
+            repo_root.joinpath(*parts[:index]), memo
+        ):
+            return True
+    return False
+
 
 # Heuristics for generated/minified files we should not review
 _MAX_FILE_BYTES = 1_000_000
@@ -51,6 +105,7 @@ class SourceFile:
     path: Path            # absolute path on disk
     rel_path: str         # path relative to the repo root (used in reports)
     language: str
+    grammar: str
 
 
 def is_git_url(target: str) -> bool:
@@ -130,10 +185,13 @@ def _escapes_root(path: Path, resolved_root: Path) -> bool:
 def walk(repo_root: Path, languages: set[str] | None = None) -> Iterator[SourceFile]:
     """Yield reviewable source files under repo_root, sorted for determinism."""
     resolved_root = repo_root.resolve()
+    dotnet_project_dirs: dict[Path, bool] = {}
     for path in sorted(repo_root.rglob("*")):
         if not path.is_file():
             continue
         if any(part in IGNORED_DIRS for part in path.relative_to(repo_root).parts):
+            continue
+        if _is_dotnet_build_output(path, repo_root, dotnet_project_dirs):
             continue
         # check before stat/read: an escaping path must never be opened
         if _escapes_root(path, resolved_root):
@@ -152,4 +210,5 @@ def walk(repo_root: Path, languages: set[str] | None = None) -> Iterator[SourceF
             path=path,
             rel_path=str(path.relative_to(repo_root)),
             language=language,
+            grammar=EXTENSION_GRAMMARS[path.suffix.lower()],
         )
